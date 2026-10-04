@@ -1,0 +1,16 @@
+# Python 缓存与构建产物
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+
+# 环境
+.venv/
+venv/
+env/
+
+# 编辑器/系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
