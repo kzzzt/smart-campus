@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>能耗与安全预警</title>
+    <style>
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body { font-family:"Microsoft YaHei",sans-serif; background:#f0f4f8; color:#1a2b3c; }
+        header { background:linear-gradient(135deg,#059669,#22c55e); color:#fff; padding:24px 40px; }
+        header h1 { font-size:24px; }
+        nav { background:#fff; border-bottom:1px solid #e2e8f0; padding:0 40px; display:flex; gap:8px; }
+        nav a { padding:16px 20px; text-decoration:none; color:#475569; font-weight:600; }
+        nav a.active { color:#059669; border-bottom:3px solid #059669; }
+        main { max-width:1100px; margin:0 auto; padding:32px 24px; }
+        .panel { background:#fff; border-radius:12px; padding:24px; box-shadow:0 4px 16px rgba(15,23,42,.06); margin-bottom:24px; }
+        h2 { color:#059669; margin-bottom:16px; font-size:19px; }
+        .btn { background:#059669; color:#fff; border:none; padding:11px 22px; border-radius:8px; cursor:pointer; font-size:14px; }
+        .alert { border-left:4px solid #ef4444; background:#fef2f2; padding:12px 14px; border-radius:6px; margin-bottom:10px; }
+        .alert b { color:#b91c1c; }
+        .alert .room { background:#fee2e2; color:#991b1b; padding:2px 8px; border-radius:12px; font-size:12px; }
+        table { width:100%; border-collapse:collapse; font-size:13px; }
+        th,td { text-align:left; padding:8px 10px; border-bottom:1px solid #e2e8f0; }
+        th { background:#f8fafc; color:#475569; }
+        .peak { color:#dc2626; font-weight:600; }
+        .normal { color:#16a34a; }
+        .suggestion { background:#ecfdf5; border:1px solid #a7f3d0; color:#065f46; padding:12px 16px; border-radius:8px; margin-top:16px; line-height:1.6; }
+        footer { text-align:center; padding:20px; color:#94a3b8; font-size:13px; }
+    </style>
+</head>
+<body>
+    <header><h1>⚡ 校园能耗与安全智能预警系统</h1></header>
+    <nav>
+        <a href="/">首页</a>
+        <a href="/ai">AI 智能客服</a>
+        <a href="/energy" class="active">能耗与安全预警</a>
+        <a href="/scheduler">智能排课与调度</a>
+    </nav>
+    <main>
+        <div class="panel">
+            <h2>实时监控</h2>
+            <button class="btn" onclick="runEnergy()">🔄 重新采集与分析（模拟IoT数据）</button>
+            <div id="result" style="margin-top:14px;"></div>
+        </div>
+        <div class="panel">
+            <h2>🚨 违规电器告警</h2>
+            {% for a in alerts %}
+            <div class="alert">
+                <span class="room">{{ a.room }}</span>
+                <b>功率 {{ a.power_w }}W</b> · {{ a.confidence }} 置信
+                <div style="margin-top:6px;">{{ a.reason }}</div>
+                <div style="font-size:12px;color:#94a3b8;margin-top:4px;">{{ a.ts }}</div>
+            </div>
+            {% else %}
+            <p style="color:#94a3b8;font-size:13px;">暂无告警，点击"重新采集与分析"生成模拟数据。</p>
+            {% endfor %}
+        </div>
+        <div class="panel">
+            <h2>📈 用电高峰预测（最近48时点）</h2>
+            <table>
+                <tr><th>时间</th><th>功率(W)</th><th>状态</th></tr>
+                {% for f in forecast %}
+                <tr>
+                    <td>{{ f.slot_ts }}</td>
+                    <td>{{ f.power_w }}</td>
+                    <td class="{{ 'peak' if f.is_peak else 'normal' }}">{{ '🔴 高峰' if f.is_peak else '✅ 正常' }}</td>
+                </tr>
+                {% endfor %}
+            </table>
+        </div>
+    </main>
+    <footer>校园能耗与安全智能预警系统 · 智慧校园管理与安全平台</footer>
+    <script>
+        async function runEnergy() {
+            const btn = document.querySelector('.btn');
+            btn.disabled = true; btn.textContent = '分析中...';
+            const r = await fetch('/api/energy/run', {method:'POST'});
+            const d = await r.json();
+            document.getElementById('result').innerHTML =
+                '<div class="suggestion">检测到 <b>' + d.alarm_count + '</b> 个疑似违规电器房间，预测未来24h <b>' +
+                d.peak_count + '</b> 个用电高峰。建议：' + d.suggestion + '</div>';
+            setTimeout(()=>location.reload(), 500);
+        }
+    </script>
+</body>
+</html>

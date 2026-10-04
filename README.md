@@ -17,10 +17,16 @@
 smart-campus/
 ├── README.md                  # 本说明
 ├── requirements.txt           # Python 依赖
-├── run_demo.py                # 一键运行演示（三系统串联）
+├── run_demo.py                # 一键运行演示（三系统串联，命令行版）
+├── run_web.py                 # Web 应用启动脚本
 ├── docs/
 │   ├── 作品说明书.md          # 符合大赛模板要求的作品文档（初稿）
-│   └── 团队信息.md            # 团队名称/队长/手机号占位
+│   └── 团队信息.md            # 团队名称/队长/手机号
+├── webapp/                    # Web 应用（Flask + SQLite）
+│   ├── __init__.py
+│   ├── app.py                 # Flask 路由 + API
+│   ├── db.py                  # SQLite 数据库访问层
+│   └── templates/             # 前端页面（首页/AI客服/能耗/排课）
 ├── src/
 │   ├── __init__.py
 │   ├── ai_service/            # 子系统一：AI 教务智能客服
@@ -50,11 +56,15 @@ smart-campus/
 # 安装依赖
 pip install -r requirements.txt
 
-# 运行三系统串联演示
+# 方式一：运行三系统串联演示（命令行版）
 python run_demo.py
+
+# 方式二：运行 Web 版（可交互界面 + 数据库持久化）
+python run_web.py
+# 浏览器打开 http://127.0.0.1:5000
 ```
 
-> 说明：本初稿采用模拟数据与可替换的 LLM 接口（提示词/本地规则即可运行，接入真实大模型 API 只需实现 `src/ai_service/llm.py` 中的 `chat()` 函数）。遗传算法、能耗预测、工单流转为核心可运行逻辑。
+> 说明：Web 版（Flask + SQLite）将三大子系统整合为可交互应用——AI 客服问答、工单流转、能耗告警、用电高峰预测、排课求解均在页面操作，数据持久化到 SQLite。模型层暂用本地规则引擎，接入真实大模型 API 只需实现 `src/ai_service/llm.py` 中的 `chat()` 函数。遗传算法、能耗预测、工单流转为核心可运行逻辑。
 
 ## 亮点（创新性）
 

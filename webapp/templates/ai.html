@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 教务智能客服</title>
+    <style>
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body { font-family:"Microsoft YaHei",sans-serif; background:#f0f4f8; color:#1a2b3c; }
+        header { background:linear-gradient(135deg,#1f6feb,#23a0ff); color:#fff; padding:24px 40px; }
+        header h1 { font-size:24px; }
+        nav { background:#fff; border-bottom:1px solid #e2e8f0; padding:0 40px; display:flex; gap:8px; }
+        nav a { padding:16px 20px; text-decoration:none; color:#475569; font-weight:600; }
+        nav a.active { color:#1f6feb; border-bottom:3px solid #1f6feb; }
+        main { max-width:1100px; margin:0 auto; padding:32px 24px; display:grid; grid-template-columns:1.4fr 1fr; gap:24px; }
+        .panel { background:#fff; border-radius:12px; padding:24px; box-shadow:0 4px 16px rgba(15,23,42,.06); }
+        h2 { color:#1f6feb; margin-bottom:16px; font-size:19px; }
+        .chatbox { height:420px; overflow-y:auto; border:1px solid #e2e8f0; border-radius:10px; padding:16px; background:#f8fafc; margin-bottom:14px; }
+        .msg { margin-bottom:12px; max-width:80%; padding:10px 14px; border-radius:10px; line-height:1.6; font-size:14px; }
+        .user { background:#1f6feb; color:#fff; margin-left:auto; }
+        .bot { background:#fff; border:1px solid #e2e8f0; }
+        .bot .meta { font-size:12px; color:#64748b; margin-bottom:5px; }
+        .inputrow { display:flex; gap:10px; }
+        input[type=text] { flex:1; padding:11px 14px; border:1px solid #cbd5e1; border-radius:8px; font-size:14px; }
+        .btn { background:#1f6feb; color:#fff; border:none; padding:11px 22px; border-radius:8px; cursor:pointer; font-size:14px; }
+        .ticket { border-left:4px solid #f59e0b; background:#fff8f0; padding:10px 12px; border-radius:6px; font-size:13px; margin-bottom:10px; }
+        .ticket b { color:#b45309; }
+        table { width:100%; border-collapse:collapse; font-size:13px; }
+        th,td { text-align:left; padding:8px 10px; border-bottom:1px solid #e2e8f0; }
+        th { background:#f8fafc; color:#475569; }
+        .resolved { color:#16a34a; font-weight:600; }
+        .pending { color:#f59e0b; font-weight:600; }
+        footer { text-align:center; padding:20px; color:#94a3b8; font-size:13px; }
+        @media(max-width:800px){ main{ grid-template-columns:1fr; } }
+    </style>
+</head>
+<body>
+    <header><h1>🤖 AI 教务智能客服</h1></header>
+    <nav>
+        <a href="/">首页</a>
+        <a href="/ai" class="active">AI 智能客服</a>
+        <a href="/energy">能耗与安全预警</a>
+        <a href="/scheduler">智能排课与调度</a>
+    </nav>
+    <main>
+        <div class="panel">
+            <h2>在线咨询</h2>
+            <div class="chatbox" id="chatbox">
+                <div class="msg bot"><div class="meta">AI 辅导员</div>你好！我是 AI 教务智能客服，可解答请假、奖学金评定、学籍异动等问题。请告诉我你的问题～</div>
+            </div>
+            <div class="inputrow">
+                <input type="text" id="msg" placeholder="例如：请三天病假需要什么材料？" onkeydown="if(event.key==='Enter')send()">
+                <button class="btn" onclick="send()">发送</button>
+            </div>
+            <p style="font-size:12px;color:#94a3b8;margin-top:8px;">提示：复杂问题（如AI无法处理）将自动生成工单流转给对应辅导员。</p>
+        </div>
+        <div class="panel">
+            <h2>📋 工单流转</h2>
+            <div id="tickets">
+                {% for t in tickets %}
+                <div class="ticket">
+                    <b>{{ t.handler }}</b> · {{ t.status }}
+                    <div style="margin-top:6px;">{{ t.student_desc }}</div>
+                    <div style="font-size:12px;color:#94a3b8;margin-top:4px;">{{ t.id }} · {{ t.created_at }}</div>
+                </div>
+                {% else %}
+                <p style="color:#94a3b8;font-size:13px;">暂无工单。当 AI 无法自动处理问题时会在此生成工单。</p>
+                {% endfor %}
+            </div>
+            <h2 style="margin-top:24px;">📜 最近咨询记录</h2>
+            <table>
+                <tr><th>学生</th><th>意图</th><th>自动/工单</th><th>时间</th></tr>
+                {% for c in conversations %}
+                <tr>
+                    <td>{{ c.student_id }}</td>
+                    <td>{{ c.intent }}</td>
+                    <td>{{ '✅自动' if c.needs_human==0 else '📋工单' }}</td>
+                    <td>{{ c.created_at }}</td>
+                </tr>
+                {% endfor %}
+            </table>
+        </div>
+    </main>
+    <footer>AI 教务智能客服 · 智慧校园管理与安全平台</footer>
+    <script>
+        async function send() {
+            const msg = document.getElementById('msg').value.trim();
+            if (!msg) return;
+            const box = document.getElementById('chatbox');
+            box.innerHTML += '<div class="msg user">' + msg + '</div>';
+            document.getElementById('msg').value = '';
+            const r = await fetch('/api/chat', {
+                method:'POST',
+                headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({message: msg, student_id:'20230001'})
+            });
+            const data = await r.json();
+            let meta = '意图:' + data.intent + ' | 置信度:' + data.confidence;
+            if (data.needs_human) meta += ' | ⚠️已生成工单→' + (data.ticket ? data.ticket.handler : '辅导员');
+            box.innerHTML += '<div class="msg bot"><div class="meta">AI 辅导员 · ' + meta + '</div>' + data.answer + '</div>';
+            box.scrollTop = box.scrollHeight;
+            setTimeout(()=>location.reload(), 400);
+        }
+    </script>
+</body>
+</html>

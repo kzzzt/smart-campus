@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>智能排课与调度</title>
+    <style>
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body { font-family:"Microsoft YaHei",sans-serif; background:#f0f4f8; color:#1a2b3c; }
+        header { background:linear-gradient(135deg,#7c3aed,#a855f7); color:#fff; padding:24px 40px; }
+        header h1 { font-size:24px; }
+        nav { background:#fff; border-bottom:1px solid #e2e8f0; padding:0 40px; display:flex; gap:8px; }
+        nav a { padding:16px 20px; text-decoration:none; color:#475569; font-weight:600; }
+        nav a.active { color:#7c3aed; border-bottom:3px solid #7c3aed; }
+        main { max-width:1100px; margin:0 auto; padding:32px 24px; }
+        .panel { background:#fff; border-radius:12px; padding:24px; box-shadow:0 4px 16px rgba(15,23,42,.06); margin-bottom:24px; }
+        h2 { color:#7c3aed; margin-bottom:16px; font-size:19px; }
+        .btn { background:#7c3aed; color:#fff; border:none; padding:11px 22px; border-radius:8px; cursor:pointer; font-size:14px; }
+        table { width:100%; border-collapse:collapse; font-size:14px; }
+        th,td { text-align:left; padding:10px 12px; border:1px solid #e2e8f0; }
+        th { background:#f8fafc; color:#475569; }
+        tr:hover { background:#faf5ff; }
+        .computer { background:#f3e8ff; }
+        .lab { background:#ecfdf5; }
+        footer { text-align:center; padding:20px; color:#94a3b8; font-size:13px; }
+        .info { background:#f5f3ff; border:1px solid #ddd6fe; color:#5b21b6; padding:12px 16px; border-radius:8px; line-height:1.7; }
+    </style>
+</head>
+<body>
+    <header><h1>📅 智能排课与教室调度系统</h1></header>
+    <nav>
+        <a href="/">首页</a>
+        <a href="/ai">AI 智能客服</a>
+        <a href="/energy">能耗与安全预警</a>
+        <a href="/scheduler" class="active">智能排课与调度</a>
+    </nav>
+    <main>
+        <div class="panel">
+            <h2>运行遗传算法排课</h2>
+            <div class="info">
+                <b>算法说明：</b>本次使用遗传算法（种群30 × 迭代40代）求解课程-时段-教室的最优分配，
+                满足硬约束（教师/教室无冲突、容量足够、需电脑的课入机房）并优化软约束（教室类型/容量匹配度）。
+                点击下方按钮触发求解。
+            </div>
+            <button class="btn" style="margin-top:16px;" onclick="runSchedule()">🔄 重新求解排课</button>
+            <div id="result" style="margin-top:14px;"></div>
+        </div>
+        <div class="panel">
+            <h2>📋 当前排课方案</h2>
+            <table>
+                <tr><th>时段</th><th>课程</th><th>教师</th><th>教室</th><th>类型</th></tr>
+                {% for s in schedule %}
+                <tr class="{{ 'computer' if s.room_type=='computer' else ('lab' if s.room_type=='lab' else '') }}">
+                    <td>{{ s.time_slot }}</td>
+                    <td>{{ s.course }}</td>
+                    <td>{{ s.teacher }}</td>
+                    <td>{{ s.room }}</td>
+                    <td>{{ '🖥️机房' if s.room_type=='computer' else ('🧪实验室' if s.room_type=='lab' else '📚普通教室') }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="5" style="color:#94a3b8;text-align:center;">暂无排课数据，点击上方按钮生成。</td></tr>
+                {% endfor %}
+            </table>
+        </div>
+    </main>
+    <footer>智能排课与教室调度系统 · 智慧校园管理与安全平台</footer>
+    <script>
+        async function runSchedule() {
+            const btn = document.querySelector('.btn');
+            btn.disabled = true; btn.textContent = '求解中...';
+            const r = await fetch('/api/schedule/run', {method:'POST'});
+            const d = await r.json();
+            document.getElementById('result').innerHTML =
+                '<div class="info">✅ 排课完成，适应度：' + d.fitness + '，共 ' + d.schedule.length + ' 门课程。</div>';
+            setTimeout(()=>location.reload(), 500);
+        }
+    </script>
+</body>
+</html>

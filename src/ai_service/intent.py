@@ -83,8 +83,10 @@ def understand(text: str) -> dict:
         elif "学籍" in text or "转专业" in text:
             intent, score = "status_change", 0.9
 
-    # 人工兜底：命中 other 或关键信息缺失视为需要人工
-    needs_human = intent == "other" or not slots
+    # 人工兜底：仅当无法识别意图（other）时转人工/生成工单。
+    # 之前用 "or not slots" 会导致明确的意图问题（如"请假的流程"）
+    # 因未抽到具体槽位而被误判为需人工 —— 已修正为仅 other 兜底。
+    needs_human = intent == "other"
 
     return {
         "intent": intent,

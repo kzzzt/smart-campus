@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>智慧校园管理与安全平台</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: "Microsoft YaHei", sans-serif; background: #f0f4f8; color: #1a2b3c; }
+        header { background: linear-gradient(135deg, #1f6feb, #23a0ff); color: #fff; padding: 28px 40px; }
+        header h1 { font-size: 26px; }
+        header p { opacity: .9; margin-top: 6px; font-size: 14px; }
+        nav { background: #fff; border-bottom: 1px solid #e2e8f0; padding: 0 40px; display: flex; gap: 8px; }
+        nav a { padding: 16px 20px; text-decoration: none; color: #475569; font-weight: 600; border-bottom: 3px solid transparent; }
+        nav a.active, nav a:hover { color: #1f6feb; border-bottom-color: #1f6feb; }
+        main { max-width: 1100px; margin: 0 auto; padding: 40px 24px; }
+        .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px; margin-top: 24px; }
+        .card { background: #fff; border-radius: 12px; padding: 24px; box-shadow: 0 4px 16px rgba(15,23,42,.06); }
+        .card h3 { color: #1f6feb; margin-bottom: 12px; }
+        .card p { color: #475569; line-height: 1.7; margin-bottom: 16px; }
+        .btn { display: inline-block; background: #1f6feb; color: #fff; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; text-decoration: none; font-size: 14px; }
+        .btn:hover { background: #1a5fd0; }
+        .badge { display:inline-block; background:#e0f2fe; color:#075985; font-size:12px; padding:3px 10px; border-radius:20px; margin:2px; }
+        footer { text-align: center; padding: 24px; color: #94a3b8; font-size: 13px; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>🛡️ 智慧校园管理与安全平台</h1>
+        <p>为学校管理层减负 · 提高校园运营效率 · 方向四（可落地）</p>
+    </header>
+    <nav>
+        <a href="/" class="active">首页</a>
+        <a href="/ai">AI 教务智能客服</a>
+        <a href="/energy">能耗与安全预警</a>
+        <a href="/scheduler">智能排课与调度</a>
+    </nav>
+    <main>
+        <h2 style="color:#1a2b3c;">三大子系统，一站式智慧校园管理</h2>
+        <div class="cards">
+            <div class="card">
+                <h3>🤖 AI 教务智能客服</h3>
+                <p>7×24 小时解答请假、奖学金、学籍异动等问题；遇到复杂情况自动生成工单并流转给对应辅导员。</p>
+                <a class="btn" href="/ai">进入咨询</a>
+            </div>
+            <div class="card">
+                <h3>⚡ 能耗与安全智能预警</h3>
+                <p>结合 IoT 与智算视觉，识别宿舍违规电器、实验室隐患，预测用电高峰，实现节能减排。</p>
+                <a class="btn" href="/energy">查看监控</a>
+            </div>
+            <div class="card">
+                <h3>📅 智能排课与教室调度</h3>
+                <p>遗传算法 + 大模型约束理解，解决排课冲突，按课程类型智能分配最合适教室。</p>
+                <a class="btn" href="/scheduler">查看排课</a>
+            </div>
+        </div>
+        <div style="margin-top:40px;background:#fff;border-radius:12px;padding:24px;">
+            <h3 style="color:#1f6feb;">功能速览</h3>
+            <p>
+                <span class="badge">规则引擎客服（可替换为大模型）</span>
+                <span class="badge">工单闭环流转</span>
+                <span class="badge">IoT 违规检测</span>
+                <span class="badge">用电高峰预测</span>
+                <span class="badge">遗传算法排课</span>
+                <span class="badge">教室智能分配</span>
+            </p>
+        </div>
+    </main>
+    <footer>智慧校园管理与安全平台 · ai双子星（康智童）· 湛卢大赛作品</footer>
+</body>
+</html>
