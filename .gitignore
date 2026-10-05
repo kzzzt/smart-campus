@@ -19,3 +19,6 @@ webapp/campus.db
 .idea/
 .DS_Store
 Thumbs.db
+
+# 提交压缩包（由 build_submission.py 生成，不纳入版本库；需要时用脚本重建）
+ai双子星-*.zip

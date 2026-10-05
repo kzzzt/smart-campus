@@ -22,4 +22,4 @@ if __name__ == "__main__":
     print("请用浏览器打开: http://127.0.0.1:5000")
     print("按 Ctrl+C 停止服务")
     print("=" * 56)
-    app.run(host="127.0.0.1", port=5000, debug=True)
+    app.run(host="127.0.0.1", port=5000, debug=False)  # 提交/演示用关闭 debug，避免调试器暴露与自动重载重置全局状态

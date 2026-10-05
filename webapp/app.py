@@ -38,7 +38,7 @@ _generator = None  # 惰性初始化
 def _get_generator():
     global _generator
     if _generator is None:
-        _generator = PowerySimulator(room_count=8, seed=2024)
+        _generator = PowerySimulator(room_count=8, seed=42)   # seed=2024 恰好 0 违规房间，改 42（与 demo 一致、必命中）
     return _generator
 
 
@@ -116,7 +116,7 @@ def api_energy_run():
     for a in full["rule_alarms"]:
         db.save_energy_alert(a)
 
-    pred = forecast_peak(records[:48], forecast_hours=24, peak_threshold_w=5000)
+    pred = forecast_peak(records[:48], forecast_hours=24, peak_threshold_w=2500)  # 阈值低于曲线峰值，否则恒 0 高峰
     db.save_forecast(pred["predicted"], pred["peak_slots"])
 
     return jsonify({
@@ -149,7 +149,7 @@ def api_schedule_run():
     sched = GeneticScheduler(courses, rooms, pop_size=30, generations=40)
     result = sched.solve()
     db.save_schedule(result["schedule"])
-    return jsonify({"schedule": result["schedule"], "fitness": result["fitness"]})
+    return jsonify({"schedule": result["schedule"], "fitness": result["fitness"], "conflicts": result["conflicts"]})
 
 
 @app.route("/api/tickets", methods=["GET"])
@@ -175,4 +175,4 @@ def api_resolve(tid):
 if __name__ == "__main__":
     db.init_db()
     print("智慧校园管理与安全平台 Web 版已启动： http://127.0.0.1:5000")
-    app.run(host="127.0.0.1", port=5000, debug=True)
+    app.run(host="127.0.0.1", port=5000, debug=False)

@@ -40,3 +40,29 @@ def test_genetic_solver_runs():
     # 每个课程都排上了
     names = {row["course"] for row in r["schedule"]}
     assert names == {"数据结构", "英语", "物理实验"}
+
+
+def test_genetic_returns_conflicts():
+    courses, rooms = _fixture()
+    sched = GeneticScheduler(courses, rooms, pop_size=20, generations=15)
+    r = sched.solve()
+    assert "conflicts" in r
+    assert isinstance(r["conflicts"], int)
+    assert r["conflicts"] >= 0
+    # 独立复核：对一组合法方案调用 count_conflicts 应返回非负整数
+    chromo = sched._random_chromosome()
+    assert sched.count_conflicts(chromo) >= 0
+
+
+def test_assign_classrooms_slot_matches_and_lab_note():
+    courses, rooms = _fixture()
+    result = assign_classrooms(courses, rooms)
+    valid = {"mon-a", "tue-b", "wed-c", "thu-d", "fri-a"}
+    assert all(r["time_slot"] in valid for r in result)
+    # 教室分配结果中同一(时段, 教室)不得重复
+    pairs = [(r["time_slot"], r["room"]) for r in result]
+    assert len(pairs) == len(set(pairs))
+    # 实验室应标注"实验室分配"而非"普通教室"
+    for r in result:
+        if r["room_type"] == "lab":
+            assert r["note"] == "实验室分配"

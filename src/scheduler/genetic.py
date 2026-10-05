@@ -84,6 +84,33 @@ class GeneticScheduler:
 
         return score
 
+    def count_conflicts(self, chromosome: list[tuple]) -> int:
+        """
+        统计硬约束冲突数（教师冲突 / 教室同一时段冲突 / 容量不足 / 机房需求不满足），
+        用于向用户直观报告求解质量（0 = 完全无冲突）。
+        """
+        conflicts = 0
+        room_slot: set = set()
+        teacher_slot: dict = {}
+        room_by_id = {r.id: r for r in self.rooms}
+        course_by_id = {c.id: c for c in self.courses}
+        for cid, slot, rid in chromosome:
+            course = course_by_id[cid]
+            room = room_by_id[rid]
+            if (slot, rid) in room_slot:
+                conflicts += 1
+            else:
+                room_slot.add((slot, rid))
+            if (slot, course.teacher) in teacher_slot:
+                conflicts += 1
+            else:
+                teacher_slot[(slot, course.teacher)] = cid
+            if room.capacity < course.class_size:
+                conflicts += 1
+            if course.requires_computer and not room.has_computer:
+                conflicts += 1
+        return conflicts
+
     # ---------------- 个体生成 ----------------
     def _random_chromosome(self) -> list[tuple]:
         chromo = []
@@ -94,6 +121,8 @@ class GeneticScheduler:
         return chromo
 
     def _crossover(self, a, b) -> tuple:
+        if len(a) <= 1:  # 单基因无需交叉，避免 randint(1, 0) 崩溃
+            return a[:], b[:]
         cut = random.randint(1, len(a) - 1)
         return a[:cut] + b[cut:], b[:cut] + a[cut:]
 
@@ -113,8 +142,9 @@ class GeneticScheduler:
                 ((self.fitness(ind), ind) for ind in pop),
                 key=lambda x: x[0], reverse=True,
             )
-            # 保留精英，其余由选择/交叉/变异产生
-            elites = [ind for _, ind in scored[: self.pop_size // 5]]
+            # 保留精英，其余由选择/交叉/变异产生；至少保留 1 个，避免小种群时 elites 为空
+            elite_count = max(1, self.pop_size // 5)
+            elites = [ind for _, ind in scored[:elite_count]]
             new_pop = list(elites)
             while len(new_pop) < self.pop_size:
                 p1 = random.choice(elites if random.random() < 0.7 else pop)
@@ -131,6 +161,7 @@ class GeneticScheduler:
         return {
             "schedule": self._build_schedule(best),
             "fitness": self.fitness(best),
+            "conflicts": self.count_conflicts(best),
         }
 
     def _build_schedule(self, chromo) -> list[dict]:

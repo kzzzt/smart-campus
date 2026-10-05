@@ -49,18 +49,25 @@ def assign_classrooms(courses: list[Course], rooms: list[Room]) -> list[dict]:
     result = []
     TIME_SLOTS = ["mon-a", "tue-b", "wed-c", "thu-d", "fri-a"]
 
-    for idx, course in enumerate(courses):
-        chosen_room = None
+    for course in courses:
+        # 输出时段必须与"实际占用判断"使用同一个 slot，避免占位与展示不一致
+        chosen_room, chosen_slot = None, None
         for slot in TIME_SLOTS:
             for r in recommend_rooms(course, rooms, top_k=len(rooms)):
                 if (slot, r.id) not in occupied:
-                    chosen_room = r
+                    chosen_room, chosen_slot = r, slot
                     occupied.add((slot, r.id))
                     break
             if chosen_room:
                 break
-        if chosen_room is None:
-            chosen_room = rooms[0]
+        if chosen_room is None:  # 所有时段教室都被占（理论兜底）
+            chosen_room, chosen_slot = rooms[0], TIME_SLOTS[len(result) % len(TIME_SLOTS)]
+        if chosen_room.has_computer:
+            note = "机房分配"
+        elif chosen_room.room_type == "lab":
+            note = "实验室分配"
+        else:
+            note = "普通教室"
         result.append(
             {
                 "course": course.name,
@@ -68,8 +75,8 @@ def assign_classrooms(courses: list[Course], rooms: list[Room]) -> list[dict]:
                 "room": chosen_room.name,
                 "room_type": chosen_room.room_type,
                 "capacity": chosen_room.capacity,
-                "time_slot": TIME_SLOTS[idx % len(TIME_SLOTS)],
-                "note": "机房分配" if chosen_room.has_computer else "普通教室",
+                "time_slot": chosen_slot,
+                "note": note,
             }
         )
     return result

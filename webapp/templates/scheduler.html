@@ -71,7 +71,9 @@
             const r = await fetch('/api/schedule/run', {method:'POST'});
             const d = await r.json();
             document.getElementById('result').innerHTML =
-                '<div class="info">✅ 排课完成，适应度：' + d.fitness + '，共 ' + d.schedule.length + ' 门课程。</div>';
+                '<div class="info">✅ 排课完成，适应度：' + d.fitness + '，冲突数：' + d.conflicts +
+                '，共 ' + d.schedule.length + ' 门课程。' +
+                (d.conflicts > 0 ? '<br>⚠️ 仍存在 ' + d.conflicts + ' 处硬约束冲突，建议调整课程/教室数据。' : '') + '</div>';
             setTimeout(()=>location.reload(), 500);
         }
     </script>

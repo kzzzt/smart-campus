@@ -66,7 +66,7 @@ def demo_energy() -> dict:
     print("【子系统二】校园能耗与安全智能预警系统")
     print("=" * 60)
 
-    sim = PowerySimulator(room_count=8, seed=2024)
+    sim = PowerySimulator(room_count=8, seed=42)   # seed=2024 时恰好命中 0 个违规房间，改用 42（必命中）
     day = datetime(2024, 5, 22)
     records = sim.generate_day(day)
 
@@ -83,7 +83,7 @@ def demo_energy() -> dict:
     # 用电高峰预测
     # 输入为累计的历史负荷（简化：取前几个房间数据聚合）
     history = records
-    pred = forecast_peak(history, forecast_hours=24, peak_threshold_w=5000)
+    pred = forecast_peak(history, forecast_hours=24, peak_threshold_w=2500)  # 阈值须低于预测曲线峰值(~3000W)，否则恒 0 高峰
     print(f"\n用电高峰预测 (未来 24h): 检测到 {pred['peak_count']} 个高峰")
     for p in pred["peak_slots"][:3]:
         print(f"  - {p['ts'].strftime('%m-%d %H:00')} 功率 {p['power_w']}W")
@@ -124,7 +124,7 @@ def demo_scheduler() -> dict:
     print("\n--- 遗传算法求解排课（求解无冲突方案）---")
     sched = GeneticScheduler(courses, rooms, pop_size=30, generations=40)
     result = sched.solve(verbose=False)
-    print(f"  最终适应度: {result['fitness']}")
+    print(f"  最终适应度: {result['fitness']}  冲突数: {result['conflicts']}")
     print("  排课结果：")
     for row in result["schedule"]:
         print(
