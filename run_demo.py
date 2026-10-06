@@ -122,7 +122,7 @@ def demo_scheduler() -> dict:
 
     # 遗传算法求解
     print("\n--- 遗传算法求解排课（求解无冲突方案）---")
-    sched = GeneticScheduler(courses, rooms, pop_size=30, generations=40)
+    sched = GeneticScheduler(courses, rooms, pop_size=30, generations=100)  # 多时段(学时)编码，100 代收敛到 0 冲突
     result = sched.solve(verbose=False)
     print(f"  最终适应度: {result['fitness']}  冲突数: {result['conflicts']}")
     print("  排课结果：")

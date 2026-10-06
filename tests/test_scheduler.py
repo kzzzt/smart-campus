@@ -36,7 +36,8 @@ def test_genetic_solver_runs():
     courses, rooms = _fixture()
     sched = GeneticScheduler(courses, rooms, pop_size=20, generations=15)
     r = sched.solve()
-    assert len(r["schedule"]) == len(courses)
+    # 每课按 hours_per_week 展开：期望行数 = 各课学时之和
+    assert len(r["schedule"]) == sum(c.hours_per_week for c in courses)
     # 每个课程都排上了
     names = {row["course"] for row in r["schedule"]}
     assert names == {"数据结构", "英语", "物理实验"}

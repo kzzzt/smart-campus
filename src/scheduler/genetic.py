@@ -4,13 +4,14 @@
 把"课程 -> 时段 -> 教室"的映射编码为一条染色体，用遗传算法（选择/交叉/变异）
 在满足约束的前提下搜索一个尽量无冲突、且教室分配合理的排课方案。
 
-编码方式（简化）：
+编码方式：
     一个基因 = (course_id, time_slot, room_id)
-    一条染色体 = 所有课程各分配一个时段与教室。
+    一条染色体 = 每门课按其学时 hours_per_week 展开为多个基因，代表该课本周的多个上课时段。
 
 适应度函数评估：
-    - 硬约束：同一教师/课程冲突、教室容量不足、机房需求不满足 -> 大额罚分
-    - 软约束：偏好时段、教室类型匹配 -> 奖励
+    - 硬约束：同一课程同一时段重复、同一教师冲突、教室同一时段冲突、
+      教室容量不足、机房需求不满足 -> 大额罚分
+    - 软约束：教室类型匹配、容量匹配 -> 奖励
 """
 
 import random
@@ -39,13 +40,13 @@ class GeneticScheduler:
     # ---------------- 适应度 ----------------
     def fitness(self, chromosome: list[tuple]) -> float:
         """
-        chromosome: [(course_id, time_slot, room_id), ...]
+        chromosome: 每门课按其 hours_per_week 展开为多个 (course_id, time_slot, room_id) 基因。
         越大越好（罚分越少）。
         """
         score = 0.0
-        slot_room_occupancy: dict = {}   # (slot, room) -> course_id
-        teacher_slot: dict = {}          # (slot, teacher) -> course_id
-        course_slot: dict = {}           # course_id -> slot
+        slot_room: dict = {}      # (slot, room) -> course_id
+        teacher_slot: dict = {}   # (slot, teacher) -> course_id
+        course_slots: dict = {}   # course_id -> list[slot]
         room_by_id = {r.id: r for r in self.rooms}
         course_by_id = {c.id: c for c in self.courses}
 
@@ -53,22 +54,24 @@ class GeneticScheduler:
             course = course_by_id[cid]
             room = room_by_id[rid]
 
-            # 硬约束罚分
-            if slot in course_slot:                       # 同一课程不能占两个时段（此处每课1个时段）
+            slots = course_slots.setdefault(cid, [])
+            if slot in slots:                     # 同一课程同一时段重复(一场课不能同时开两场)
                 score -= 100
-            if (slot, rid) in slot_room_occupancy:        # 同一教室同一时段冲突
+            slots.append(slot)
+            if (slot, rid) in slot_room:          # 同一教室同一时段冲突
                 score -= 100
                 continue
+            slot_room[(slot, rid)] = cid
             if (slot, course.teacher) in teacher_slot:    # 同一教师冲突
                 score -= 100
                 continue
+            teacher_slot[(slot, course.teacher)] = cid
             if room.capacity < course.class_size:         # 教室容量不足
                 score -= 80
             if course.requires_computer and not room.has_computer:  # 需电脑却非机房
                 score -= 60
-            # 与冲突课程列表冲突
-            for other in course.conflicts_with:
-                if other in course_slot and course_slot[other] == slot:
+            for other in course.conflicts_with:           # 冲突课程列表
+                if slot in course_slots.get(other, []):
                     score -= 100
 
             # 软约束奖励
@@ -77,11 +80,9 @@ class GeneticScheduler:
             if room.capacity >= course.class_size and room.capacity <= course.class_size * 1.5:
                 score += 10  # 教室容量匹配度好
 
-            slot_room_occupancy[(slot, rid)] = cid
-            teacher_slot[(slot, course.teacher)] = cid
-            course_slot[cid] = slot
-            score += 50  # 每排出一门课的基础分
+            score += 10  # 每成功安排一个课时的基础分
 
+        score += 30 * len(course_slots)  # 每门课都能排上的整体奖励
         return score
 
     def count_conflicts(self, chromosome: list[tuple]) -> int:
@@ -92,11 +93,15 @@ class GeneticScheduler:
         conflicts = 0
         room_slot: set = set()
         teacher_slot: dict = {}
+        course_slots: dict = {}
         room_by_id = {r.id: r for r in self.rooms}
         course_by_id = {c.id: c for c in self.courses}
         for cid, slot, rid in chromosome:
             course = course_by_id[cid]
             room = room_by_id[rid]
+            if slot in course_slots.setdefault(cid, []):
+                conflicts += 1
+            course_slots[cid].append(slot)
             if (slot, rid) in room_slot:
                 conflicts += 1
             else:
@@ -113,11 +118,14 @@ class GeneticScheduler:
 
     # ---------------- 个体生成 ----------------
     def _random_chromosome(self) -> list[tuple]:
+        """每门课按 hours_per_week 生成多个基因；同课优先取不同的时段。"""
         chromo = []
         for c in self.courses:
-            slot = random.choice(TIME_SLOTS)
-            room = random.choice(self.rooms)
-            chromo.append((c.id, slot, room.id))
+            try:
+                slots = random.sample(TIME_SLOTS, c.hours_per_week)
+            except ValueError:  # 学时数超过时段总数：允许重复，由适应度惩罚
+                slots = [random.choice(TIME_SLOTS) for _ in range(c.hours_per_week)]
+            chromo.extend((c.id, s, random.choice(self.rooms).id) for s in slots)
         return chromo
 
     def _crossover(self, a, b) -> tuple:
@@ -130,7 +138,10 @@ class GeneticScheduler:
         for i in range(len(chromo)):
             if random.random() < rate:
                 cid, _slot, _rid = chromo[i]
-                chromo[i] = (cid, random.choice(TIME_SLOTS), random.choice(self.rooms).id)
+                # 变异时尽量避开该课程已占用的时段，降低"同课同时段重复"
+                other_slots = {s for j, (cc, s, _) in enumerate(chromo) if j != i and cc == cid}
+                cands = [s for s in TIME_SLOTS if s not in other_slots] or list(TIME_SLOTS)
+                chromo[i] = (cid, random.choice(cands), random.choice(self.rooms).id)
         return chromo
 
     # ---------------- 主流程 ----------------

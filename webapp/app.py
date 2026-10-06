@@ -146,7 +146,7 @@ def api_schedule_run():
         Room("R5", "大教室2", 120, has_computer=False, room_type="normal"),
         Room("R6", "普通教室1", 60, has_computer=False, room_type="normal"),
     ]
-    sched = GeneticScheduler(courses, rooms, pop_size=30, generations=40)
+    sched = GeneticScheduler(courses, rooms, pop_size=30, generations=100)  # 多时段编码，100 代收敛到 0 冲突
     result = sched.solve()
     db.save_schedule(result["schedule"])
     return jsonify({"schedule": result["schedule"], "fitness": result["fitness"], "conflicts": result["conflicts"]})
