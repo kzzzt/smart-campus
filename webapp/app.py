@@ -284,7 +284,11 @@ def ai_page():
     u = _current_user()
     role, who = (u["role"], u["student_id"]) if u and u["role"] == "student" else ((u["role"], u["handler"]) if u and u["role"] == "counselor" else ("", ""))
     tickets = db.list_tickets(role=role, who=who)
-    return render_template("ai.html", conversations=recent, tickets=tickets)
+    # 辅导员：在 AI 页同时展示流转到自己职责的能耗告警（学生/管理员不需要）
+    energy_notices = None
+    if u and u["role"] == "counselor" and u.get("handler"):
+        energy_notices = [n for n in db.list_energy_notices() if n["handler"] == u["handler"]]
+    return render_template("ai.html", conversations=recent, tickets=tickets, energy_notices=energy_notices)
 
 
 @app.route("/energy")

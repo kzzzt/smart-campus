@@ -40,6 +40,21 @@
                 {% endfor %}
             </div>
         </div>
+        {% if energy_notices is not none %}
+        <div class="card">
+            <div class="card-title">能耗告警通知</div>
+            <div id="enotices">
+                {% for n in energy_notices %}
+                <div style="border-left:3px solid var(--danger,#dc2626);background:#fef2f2;padding:10px 12px;border-radius:6px;font-size:13px;margin-bottom:10px;">
+                    <div><b style="color:#b91c1c;">{{ n.room }}</b> <span class="tag tag-amber">高能耗</span></div>
+                    <div style="margin-top:4px;color:var(--text);">{{ n.message }}</div>
+                </div>
+                {% else %}
+                <p style="color:var(--text-3);font-size:13px;">当前无高能耗告警通知。</p>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
         <div class="card">
             <div class="card-title">最近咨询记录</div>
             <div class="table-wrap">
