@@ -13,11 +13,14 @@ Web 应用 —— 智慧校园管理与安全平台（可交互版）。
 import sys
 import os
 import uuid
+import hashlib
+import secrets
+import hmac
 from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from flask import Flask, render_template, request, jsonify, redirect, url_for
+from flask import Flask, render_template, request, jsonify, redirect, url_for, session, abort
 
 from webapp import db
 from src.ai_service.bot import CampusAIBot
@@ -30,6 +33,28 @@ from src.scheduler.classroom import assign_classrooms
 
 
 app = Flask(__name__)
+# 会话密钥：优先从环境变量读取（部署时务必设置），未设置时生成并持久化到 webapp/.secret_key
+_secret_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".secret_key")
+if os.environ.get("SECRET_KEY"):
+    app.secret_key = os.environ["SECRET_KEY"]
+elif os.path.exists(_secret_file):
+    with open(_secret_file, "rb") as f:
+        app.secret_key = f.read().strip()
+else:
+    app.secret_key = secrets.token_hex(32)
+    try:
+        with open(_secret_file, "w") as f:
+            f.write(app.secret_key)
+    except OSError:
+        pass  # 只读环境：每次启动随机密钥，会话将失效，但不影响功能
+
+# 管理员口令：默认 admin / admin123（仅本机演示用），生产必须通过环境变量 ADMIN_PASSWORD 覆盖
+ADMIN_USER = os.environ.get("ADMIN_USER", "admin")
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin123")
+
+# 受保护的前端页面与 API（未登录一律拒绝）
+PROTECTED_PAGES = {"/ai", "/energy", "/scheduler"}
+PROTECTED_API = ("/api/",)
 
 # 全局会话
 _bot = CampusAIBot()
@@ -41,6 +66,80 @@ def _get_generator():
     if _generator is None:
         _generator = PowerySimulator(room_count=8, seed=42)   # seed=2024 恰好 0 违规房间，改 42（与 demo 一致、必命中）
     return _generator
+
+
+def _is_logged_in() -> bool:
+    return session.get("is_admin") is True
+
+
+def _check_password(pwd: str) -> bool:
+    """恒定时间比较，避免时序侧信道。"""
+    return hmac.compare_digest(pwd.encode("utf-8"), ADMIN_PASSWORD.encode("utf-8"))
+
+
+def _csrf_token():
+    """当前会话的 CSRF token（无则生成）。"""
+    if "_csrf" not in session:
+        session["_csrf"] = secrets.token_hex(16)
+    return session["_csrf"]
+
+
+def _csrf_ok() -> bool:
+    stored = session.get("_csrf", "")
+    # 会话未设置 token 时一律拒绝（封堵空值对空值的恒等通过）
+    if not stored:
+        return False
+    sent = request.headers.get("X-CSRF-Token", "")
+    return hmac.compare_digest(sent, stored)
+
+
+# ---------------- 登录/鉴权 ----------------
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        user = (request.form.get("username") or "").strip()
+        pwd = request.form.get("password") or ""
+        if user == ADMIN_USER and _check_password(pwd):
+            session.clear()
+            session["is_admin"] = True
+            session["_csrf"] = secrets.token_hex(16)
+            return redirect(url_for("index"))
+        return render_template("login.html", error="用户名或密码错误"), 401
+    return render_template("login.html")
+
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("login"))
+
+
+@app.before_request
+def _guard():
+    path = request.path
+    # 静态资源不拦截
+    if path.startswith("/static"):
+        return
+    is_api = path.startswith(PROTECTED_API)
+    is_page = path in PROTECTED_PAGES
+    if not is_page and not is_api:
+        return  # 首页/登录等公开
+
+    if not _is_logged_in():
+        if is_api:
+            return jsonify({"error": "未登录"}), 401
+        return redirect(url_for("login"))
+
+    # 写操作 API 需携带 CSRF token（登录后任意校验）
+    if is_api and request.method in ("POST", "PUT", "DELETE", "PATCH"):
+        if not _csrf_ok():
+            return jsonify({"error": "CSRF 校验失败"}), 403
+
+
+@app.context_processor
+def _inject_globals():
+    return {"csrf_token": _csrf_token(), "is_logged_in": _is_logged_in()}
 
 
 # ---------------- 页面路由 ----------------
@@ -113,7 +212,7 @@ def api_energy_run():
     day = datetime.now()
     records = sim.generate_day(day)
 
-    full = detect(records, use_vision=False)
+    full = detect(records, use_vision=True)  # 双通道：IoT功率规则 + 智算视觉复核
     run_id = f"E{datetime.now():%Y%m%d%H%M%S}-{uuid.uuid4().hex[:4]}"
     for a in full["rule_alarms"]:
         db.save_energy_alert(a)
@@ -124,6 +223,8 @@ def api_energy_run():
     return jsonify({
         "alarms": full["rule_alarms"],
         "alarm_count": len(full["rule_alarms"]),
+        "vision": full["vision"],
+        "vision_used": full["vision_used"],
         "peak_count": pred["peak_count"],
         "suggestion": pred["suggestion"],
     })

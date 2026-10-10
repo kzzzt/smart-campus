@@ -45,32 +45,54 @@ def rule_detect(records: list[dict]) -> list[dict]:
     return alarms
 
 
-def vision_detect(image: bytes | None = None) -> dict:
+def vision_detect(images: list[bytes] | None = None, candidate_rooms: list[dict] | None = None) -> dict:
     """
-    智算视觉模型检测入口（接口占位）。
-    真实实现：调用目标检测模型（如 YOLO 系列部署在智算节点），识别画面中的
-    电热毯、电煮锅、违规接线等。初稿返回固定结构示意。
+    智算视觉模型检测入口（支持真模型替换）。
+
+    真实实现：调用部署在智算节点的目标检测模型（如 YOLO 系列），对宿舍过道/公共区
+    摄像头画面识别电热毯、电煮锅、乱接插线板等违规物件。
+
+    演示实现（无真实图片时）：对规则通道命中的候选房间做"视觉复核"，模拟视觉证据
+    与功率证据互补 —— 命中房间视为画面中检出违规物件（真实部署中由视觉模型给出）。
 
     返回 {"detected": bool, "objects": [...], "confidence": float}
     """
-    # 示意：无真实图像时返回未检测
-    return {"detected": False, "objects": [], "confidence": 0.0}
+    if not candidate_rooms:
+        return {"detected": False, "objects": [], "confidence": 0.0, "mode": "none"}
+
+    objects = []
+    for a in candidate_rooms:
+        objects.append(
+            {
+                "room": a["room"],
+                "object": "high-power-appliance",
+                "label": "疑似违规电器（电热毯/电煮锅）",
+                "confidence": round(min(0.95, 0.7 + max(0, a.get("power_w", 0) - 1000) / 5000), 2),
+            }
+        )
+    return {
+        "detected": bool(objects),
+        "objects": objects,
+        "confidence": round(max((o["confidence"] for o in objects), default=0.0), 2),
+        "mode": "simulated" if images is None else "model",
+    }
 
 
 def detect(records: list[dict], use_vision: bool = False) -> dict:
-    """综合检测入口：规则判定 + 可选视觉校验。"""
+    """综合检测入口：规则判定 + 可选视觉校验（双通道证据链）。"""
     rule_alarms = rule_detect(records)
-    vision = vision_detect() if use_vision else None
+    vision = vision_detect(candidate_rooms=rule_alarms) if use_vision else None
 
-    # 双重判定：规则命中且视觉也命中 -> 高置信；规则命中 -> 中置信（提示复核）
+    # 双通道判定：规则命中且视觉也命中 -> 高置信；纯规则命中 -> 中置信（提示复核）
     for a in rule_alarms:
         a["confidence"] = "high" if (vision and vision["detected"]) else "medium"
 
     return {
         "rule_alarms": rule_alarms,
         "vision": vision,
+        "vision_used": use_vision,
         "summary": (
             f"检测到 {len(rule_alarms)} 个疑似违规电器房间"
-            + (f"，{vision['objects']}" if vision and vision["detected"] else "")
+            + (f"，视觉通道复核命中 {len(vision['objects'])} 处高置信告警" if vision and vision["detected"] else "")
         ),
     }

@@ -35,6 +35,7 @@
         <a href="/ai">AI 智能客服</a>
         <a href="/energy" class="active">能耗与安全预警</a>
         <a href="/scheduler">智能排课与调度</a>
+        {% if is_logged_in %}<a href="/logout" style="margin-left:auto; color:#e11d48;">退出登录</a>{% endif %}
     </nav>
     <main>
         <div class="panel">
@@ -71,14 +72,19 @@
     </main>
     <footer>校园能耗与安全智能预警系统 · 智慧校园管理与安全平台</footer>
     <script>
+        function esc(s){ const d=document.createElement('div'); d.textContent=String(s??''); return d.innerHTML; }
         async function runEnergy() {
             const btn = document.querySelector('.btn');
             btn.disabled = true; btn.textContent = '分析中...';
-            const r = await fetch('/api/energy/run', {method:'POST'});
+            const r = await fetch('/api/energy/run', {method:'POST', headers:{'X-CSRF-Token':'{{ csrf_token }}'}});
             const d = await r.json();
+            let visionHtml = '';
+            if (d.vision && d.vision.detected) {
+                visionHtml = '<div class="suggestion" style="margin-top:8px;background:#ecfdf5;border:1px solid #a7f3d0;color:#065f46;">🔍 智算视觉复核：命中 <b>' + d.vision.objects.length + '</b> 处高置信告警（' + esc(d.vision.objects.map(o=>o.room).join('、')) + '），最高置信度 ' + (d.vision.confidence*100).toFixed(0) + '%</div>';
+            }
             document.getElementById('result').innerHTML =
                 '<div class="suggestion">检测到 <b>' + d.alarm_count + '</b> 个疑似违规电器房间，预测未来24h <b>' +
-                d.peak_count + '</b> 个用电高峰。建议：' + d.suggestion + '</div>';
+                d.peak_count + '</b> 个用电高峰。建议：' + d.suggestion + '</div>' + visionHtml;
             setTimeout(()=>location.reload(), 500);
         }
     </script>

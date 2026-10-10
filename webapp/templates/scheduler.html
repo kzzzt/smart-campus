@@ -33,6 +33,7 @@
         <a href="/ai">AI 智能客服</a>
         <a href="/energy">能耗与安全预警</a>
         <a href="/scheduler" class="active">智能排课与调度</a>
+        {% if is_logged_in %}<a href="/logout" style="margin-left:auto; color:#e11d48;">退出登录</a>{% endif %}
     </nav>
     <main>
         <div class="panel">
@@ -68,7 +69,7 @@
         async function runSchedule() {
             const btn = document.querySelector('.btn');
             btn.disabled = true; btn.textContent = '求解中...';
-            const r = await fetch('/api/schedule/run', {method:'POST'});
+            const r = await fetch('/api/schedule/run', {method:'POST', headers:{'X-CSRF-Token':'{{ csrf_token }}'}});
             const d = await r.json();
             document.getElementById('result').innerHTML =
                 '<div class="info">✅ 排课完成，适应度：' + d.fitness + '，冲突数：' + d.conflicts +

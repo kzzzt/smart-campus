@@ -34,6 +34,7 @@
         <a href="/ai">AI 教务智能客服</a>
         <a href="/energy">能耗与安全预警</a>
         <a href="/scheduler">智能排课与调度</a>
+        {% if is_logged_in %}<a href="/logout" style="margin-left:auto; color:#e11d48;">退出登录</a>{% else %}<a href="/login" style="margin-left:auto;">管理登录</a>{% endif %}
     </nav>
     <main>
         <h2 style="color:#1a2b3c;">三大子系统，一站式智慧校园管理</h2>

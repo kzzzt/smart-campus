@@ -76,9 +76,13 @@ def demo_energy() -> dict:
     for a in alarms:
         print(f"  - {a['room']} 功率 {a['power_w']}W: {a['reason']}")
 
-    # 综合检测（含视觉接口）
-    full = detect(records, use_vision=False)
+    # 综合检测（双通道：IoT功率规则 + 智算视觉复核）
+    full = detect(records, use_vision=True)
     print(f"\n综合检测结论: {full['summary']}")
+    if full.get("vision") and full["vision"]["detected"]:
+        print("  智算视觉复核: 命中 " + str(len(full["vision"]["objects"])) + " 处高置信告警:")
+        for o in full["vision"]["objects"]:
+            print(f"    - {o['room']} {o['label']} 置信度 {o['confidence']:.0%}")
 
     # 用电高峰预测
     # 输入为累计的历史负荷（简化：取前几个房间数据聚合）

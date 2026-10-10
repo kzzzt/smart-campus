@@ -41,6 +41,7 @@
         <a href="/ai" class="active">AI 智能客服</a>
         <a href="/energy">能耗与安全预警</a>
         <a href="/scheduler">智能排课与调度</a>
+        {% if is_logged_in %}<a href="/logout" style="margin-left:auto; color:#e11d48;">退出登录</a>{% endif %}
     </nav>
     <main>
         <div class="panel">
@@ -100,7 +101,7 @@
             document.getElementById('msg').value = '';
             const r = await fetch('/api/chat', {
                 method:'POST',
-                headers:{'Content-Type':'application/json'},
+                headers:{'Content-Type':'application/json', 'X-CSRF-Token':'{{ csrf_token }}'},
                 body: JSON.stringify({message: msg, student_id:'20230001'})
             });
             const data = await r.json();
