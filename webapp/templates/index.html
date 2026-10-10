@@ -3,33 +3,49 @@
 {% block content %}
 <div class="page-head">
     <h1>工作台</h1>
-    <p>为学校管理层减负，提高校园运营效率。三大子系统一站式管理。</p>
+    <p>为学校管理层减负，提高校园运营效率。各角色按权限进入对应功能。</p>
 </div>
 
-<div class="card">
-    <div class="card-title">平台简介</div>
-    <p style="color:var(--text-2);font-size:13px;max-width:760px;">
-        围绕智慧校园"管理与安全"场景，整合 AI 智能客服、能耗与安全预警、智能排课与教室调度三大子系统，
-        提供可交互、可落地的 Web 管理界面。下方为系统入口与能力清单。
+<div class="card" style="background:var(--primary-light);border-color:#c7d2fe;">
+    <div class="card-title">欢迎回来，{{ current_user.display_name if current_user else '访客' }}</div>
+    <p style="color:var(--text-2);font-size:13px;">
+        {% if current_user %}
+        当前身份：<span class="tag tag-blue">{{ ROLES.get(current_user.role, current_user.role) }}</span>
+        {% if current_user.role == 'student' and current_user.student_id %}学号 {{ current_user.student_id }}{% endif %}
+        {% if current_user.role == 'counselor' and current_user.handler %}负责业务：{{ current_user.handler }}{% endif %}
+        {% else %}
+        请先登录以使用完整功能。
+        {% endif %}
     </p>
 </div>
 
 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;margin-bottom:20px;">
     <div class="card" style="display:flex;flex-direction:column;margin-bottom:0;">
         <div style="font-size:14px;font-weight:600;margin-bottom:6px;">AI 智能客服</div>
-        <p style="color:var(--text-2);font-size:13px;flex:1;">7×24 小时解答请假、奖学金、学籍异动等问题；复杂情况自动生成工单并流转给对应辅导员。</p>
+        <p style="color:var(--text-2);font-size:13px;flex:1;">7×24 小时解答请假、奖学金、学籍异动等问题；复杂情况自动生成工单并流转给对应辅导员。{% if current_user and current_user.role=='student' %}您可在此咨询并追踪自己的工单状态。{% endif %}</p>
         <a class="btn" href="/ai" style="margin-top:16px;align-self:flex-start;">进入咨询</a>
     </div>
+    {% if '/energy' in allowed_pages %}
     <div class="card" style="display:flex;flex-direction:column;margin-bottom:0;">
         <div style="font-size:14px;font-weight:600;margin-bottom:6px;">能耗与安全预警</div>
-        <p style="color:var(--text-2);font-size:13px;flex:1;">结合 IoT 功率与智算视觉双通道，识别宿舍违规电器、实验室隐患，预测用电高峰。</p>
+        <p style="color:var(--text-2);font-size:13px;flex:1;">结合 IoT 功率与智算视觉双通道，识别宿舍违规电器、预测用电高峰，逐宿舍能耗监控。{% if current_user and current_user.role=='student' %}（只读）{% endif %}{% if current_user and current_user.role=='admin' %}可采集分析并向辅导员发出高能耗告警。{% endif %}</p>
         <a class="btn" href="/energy" style="margin-top:16px;align-self:flex-start;">查看监控</a>
     </div>
+    {% endif %}
+    {% if '/scheduler' in allowed_pages %}
     <div class="card" style="display:flex;flex-direction:column;margin-bottom:0;">
         <div style="font-size:14px;font-weight:600;margin-bottom:6px;">智能排课与调度</div>
-        <p style="color:var(--text-2);font-size:13px;flex:1;">遗传算法 + 大模型约束理解，解决排课冲突，按课程类型智能分配最合适的教室。</p>
+        <p style="color:var(--text-2);font-size:13px;flex:1;">遗传算法 + 大模型约束理解，解决排课冲突，按课程类型智能分配最合适的教室。{% if current_user and current_user.role=='counselor' %}（教师视角查看自己的课程）{% endif %}{% if current_user and current_user.role=='student' %}（只读）{% endif %}</p>
         <a class="btn" href="/scheduler" style="margin-top:16px;align-self:flex-start;">查看排课</a>
     </div>
+    {% endif %}
+    {% if not allowed_pages %}
+    <div class="card" style="display:flex;flex-direction:column;margin-bottom:0;min-height:120px;">
+        <div style="font-size:14px;font-weight:600;margin-bottom:6px;">暂无可用功能</div>
+        <p style="color:var(--text-2);font-size:13px;flex:1;">请以有效角色登录后查看可用功能入口。</p>
+        <a class="btn" href="/login" style="margin-top:16px;align-self:flex-start;">前往登录</a>
+    </div>
+    {% endif %}
 </div>
 
 <div class="card">
@@ -38,7 +54,8 @@
         <span class="tag tag-blue">规则引擎客服（可替换为大模型）</span>
         <span class="tag tag-blue">工单闭环流转</span>
         <span class="tag tag-green">IoT 违规检测</span>
-        <span class="tag tag-green">用电高峰预测</span>
+        <span class="tag tag-green">逐宿舍能耗监控</span>
+        <span class="tag tag-green">辅导员风险告警</span>
         <span class="tag tag-purple">遗传算法排课</span>
         <span class="tag tag-purple">教室智能分配</span>
     </div>

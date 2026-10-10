@@ -9,7 +9,9 @@
 <div class="card">
     <div class="card-title">实时监控</div>
     <p class="card-sub">点击按钮基于模拟 IoT 数据重新采集并分析一天能耗，生成告警与未来 24 小时高峰预测。<br>{% if current_user and current_user.role != 'admin' %}<span style="color:var(--text-3);font-size:12px;">当前角色为{{ ROLES.get(current_user.role) }}，仅可查看，采集与分析需管理人员账号操作。</span>{% endif %}</p>
-    {% if not current_user or current_user.role == 'admin' %}
+    {% if current_user and current_user.role == 'admin' %}
+    <button class="btn" id="runBtn" onclick="runEnergy()">重新采集与分析</button>
+    {% elif not current_user %}
     <button class="btn" id="runBtn" onclick="runEnergy()">重新采集与分析</button>
     {% endif %}
     <div id="result" style="margin-top:14px;"></div>

@@ -39,14 +39,14 @@ ROLES = {
     "admin": "管理人员",
 }
 
-# 各角色可访问的页面（student 只能看 AI 客服；能耗/排课只读见 read_only_pages）
+# 各角色可访问的页面
 ROLE_PAGES = {
-    "student": ["/ai"],
-    "counselor": ["/ai", "/scheduler"],
-    "admin": ["/ai", "/energy", "/scheduler"],
+    "student": ["/ai"],                       # 学生：仅 AI 客服（不可见能耗/排课）
+    "counselor": ["/ai", "/scheduler"],       # 辅导员：AI 客服 + 排课
+    "admin": ["/ai", "/energy", "/scheduler"],# 管理人员：全部
 }
-# 学生可只读浏览的页面（不可写操作）
-READ_ONLY_PAGES_FOR_STUDENT = ["/energy", "/scheduler"]
+# 兼容引用（学生不再只读浏览能耗/排课，置空）
+READ_ONLY_PAGES_FOR_STUDENT = []
 # 默认演示账户（不覆盖时用）——首启初始化到 users 表
 DEFAULT_ACCOUNTS = [
     ("student", "stu123", "student", "学生小李", "20230001", ""),
@@ -194,12 +194,8 @@ def api_me():
 
 
 def _page_allowed(path: str, role: str) -> bool:
-    """页面是否对某角色开放。学生额外可只读浏览能耗/排课。"""
-    if path in ROLE_PAGES.get(role, []):
-        return True
-    if role == "student" and path in READ_ONLY_PAGES_FOR_STUDENT:
-        return True
-    return False
+    """页面是否对某角色开放（学生仅 AI 客服）。"""
+    return path in ROLE_PAGES.get(role, [])
 
 
 @app.before_request
@@ -221,32 +217,41 @@ def _guard():
         return redirect(url_for("login"))
 
     role = session.get("role")
-    # 写操作 API：仅 admin 全写；counselor 可写排课；student 只读（拒写）
-    if is_api and request.method in ("POST", "PUT", "DELETE", "PATCH"):
-        # 工单结案等管理操作仅 admin
-        if path.startswith("/api/tickets/") and path.endswith("/resolve"):
-            if role != "admin":
-                return jsonify({"error": "仅管理人员可结案工单"}), 403
-        # 排课求解：admin / counselor
-        if path == "/api/schedule/run" and role not in ("admin", "counselor"):
-            return jsonify({"error": "当前角色无排课修改权限"}), 403
-        # 能耗运行：仅 admin
-        if path == "/api/energy/run" and role != "admin":
-            return jsonify({"error": "仅管理人员可触发能耗分析"}), 403
-        # 通用写保护：student 一律不可写
-        if role == "student":
-            return jsonify({"error": "学生角色为只读，不可修改"}), 403
-        if not _csrf_ok():
-            return jsonify({"error": "CSRF 校验失败"}), 403
-    elif is_api:
-        # GET 的工单列表：student/counselor 按数据范围过滤（在路由内处理）
-        pass
-    elif is_page:
+
+    # ============ 页面访问控制 ============
+    if is_page:
         if not _page_allowed(path, role):
-            # 学生访问排课（可读）放行，其余未授权页面 403
-            if role == "student" and path in READ_ONLY_PAGES_FOR_STUDENT:
-                return None
             return render_template("forbidden.html", role_label=ROLES.get(role, role)), 403
+        return
+
+    # ============ API 访问控制 ============
+    if is_api:
+        # 写操作：按角色 + 路径细分
+        if request.method in ("POST", "PUT", "DELETE", "PATCH"):
+            # 智能客服（学生/辅导员/管理）都可提问、生成工单 —— 学生的核心功能
+            if path == "/api/chat":
+                if not _csrf_ok():
+                    return jsonify({"error": "CSRF 校验失败"}), 403
+                return
+            # 工单结案：仅管理员
+            if path.startswith("/api/tickets/") and path.endswith("/resolve"):
+                if role != "admin":
+                    return jsonify({"error": "仅管理人员可结案工单"}), 403
+            # 排课求解：管理员 / 辅导员
+            if path == "/api/schedule/run" and role not in ("admin", "counselor"):
+                return jsonify({"error": "当前角色无排课修改权限"}), 403
+            # 能耗运行：仅管理
+            if path == "/api/energy/run" and role != "admin":
+                return jsonify({"error": "仅管理人员可触发能耗分析"}), 403
+            # 其他写 API：学生一律拒绝（学生仅客服可交互）
+            if role == "student":
+                return jsonify({"error": "学生角色仅可使用 AI 客服"}), 403
+            if not _csrf_ok():
+                return jsonify({"error": "CSRF 校验失败"}), 403
+        else:
+            # 读操作 API：登录即可（数据范围在路由内按角色过滤）
+            return
+    return
 
 
 @app.context_processor
@@ -254,8 +259,6 @@ def _inject_globals():
     u = _current_user()
     role = u["role"] if u else None
     allowed = set(ROLE_PAGES.get(role, [])) if role else set()
-    if role == "student":
-        allowed.update(READ_ONLY_PAGES_FOR_STUDENT)  # 学生可只读浏览能耗/排课
     return {
         "csrf_token": _csrf_token(),
         "is_logged_in": _is_logged_in(),
