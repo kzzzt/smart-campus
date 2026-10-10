@@ -35,6 +35,8 @@ def ok(name: str) -> bool:
         return False
     if name.endswith((".pyc", ".db", ".zip")):
         return False
+    if name in (".secret_key", "campus.db"):
+        return False
     return True
 
 
