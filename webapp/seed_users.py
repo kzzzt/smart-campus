@@ -42,6 +42,6 @@ SEED_USERS = [
     _u("t_zhang", "cou123", "counselor", "张老师", handler="张老师"),
     _u("t_li", "cou123", "counselor", "李老师", handler="李老师"),
     # ---- 管理人员（最高权限，可维护修改） ----
-    _u("admin", "admin123", "admin", "系统管理员"),
-    _u("manager", "admin123", "admin", "系统管理员"),
+    _u("admin", "SmartCampus@2026", "admin", "系统管理员"),
+    _u("manager", "SmartCampus@2026", "admin", "系统管理员"),
 ]

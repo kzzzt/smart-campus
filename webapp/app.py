@@ -51,7 +51,7 @@ READ_ONLY_PAGES_FOR_STUDENT = []
 DEFAULT_ACCOUNTS = [
     ("student", "stu123", "student", "学生小李", "20230001", ""),
     ("counselor", "cou123", "counselor", "综合事务辅导员", "", "综合事务辅导员"),
-    ("admin", "admin123", "admin", "系统管理员", "", ""),
+    ("admin", "SmartCampus@2026", "admin", "系统管理员", "", ""),
 ]
 
 
@@ -324,7 +324,11 @@ def scheduler_page():
 @app.route("/api/chat", methods=["POST"])
 def api_chat():
     data = request.get_json(force=True)
-    student_id = data.get("student_id") or (session.get("student_id") or "")
+    # 以登录会话的学号为准：学生不能伪造他人学号（管理员/辅导员可显式代学生登记）
+    u = _current_user()
+    student_id = session.get("student_id") or ""
+    if u and u["role"] != "student" and data.get("student_id"):
+        student_id = str(data.get("student_id")).strip()
     msg = (data.get("message") or "").strip()
     if not msg:
         return jsonify({"error": "消息不能为空"}), 400
@@ -428,15 +432,15 @@ def api_tickets():
 def api_resolve(tid):
     data = request.get_json(force=True)
     resolution = data.get("resolution", "已处理")
-    # 更新数据库中的工单状态
+    # 更新数据库中的工单状态（已结案的不再重复结案）
     conn = db.get_conn()
-    conn.execute(
-        "UPDATE tickets SET status='resolved', resolution=? WHERE id=?",
+    cur = conn.execute(
+        "UPDATE tickets SET status='resolved', resolution=? WHERE id=? AND status != 'resolved'",
         (resolution, tid),
     )
     conn.commit()
     conn.close()
-    return jsonify({"ok": True})
+    return jsonify({"ok": True, "changed": cur.rowcount > 0})
 
 
 if __name__ == "__main__":

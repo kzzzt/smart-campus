@@ -92,6 +92,11 @@ def build_notices(rooms: list[dict]) -> list[dict]:
     对高能耗宿舍生成"通知对应辅导员"的告警消息。
     rooms: summarize_rooms() 输出。
 
+    语义区分（避免口径混淆）：
+      - rule_detect()      -> 判定"疑似违规电器"（持续超过 ILLEGAL_POWER_THRESHOLD）
+      - build_notices()    -> 判定"高能耗宿舍"（单点峰值超过 HIGH_ENERGY_THRESHOLD，节能预警）
+    两者阈值与口径不同，页面文案分别表述为"高能耗"与"违规电器"。
+
     返回 [{"room","handler","power_w","level","message"}, ...]
     """
     notices = []
@@ -105,8 +110,9 @@ def build_notices(rooms: list[dict]) -> list[dict]:
             "power_w": r["max_w"],
             "level": level,
             "message": (
-                f"宿舍 {r['room']} 当日最高用电 {round(r['max_w'])}W，疑似使用高功率违规电器，"
-                f"请及时查看并联系学生处理。"
+                f"宿舍 {r['room']} 当日最高用电 {round(r['max_w'])}W，"
+                f"超过高能耗阈值 {int(HIGH_ENERGY_THRESHOLD_W)}W，"
+                f"请留意是否使用大功率电器并联系学生核实。"
             ),
         })
     return notices

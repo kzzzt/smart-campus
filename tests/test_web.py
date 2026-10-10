@@ -23,7 +23,7 @@ def client(tmp_path):
 
 
 def _login(client):
-    return client.post("/login", data={"username": "admin", "password": "admin123"})
+    return client.post("/login", data={"username": "admin", "password": "SmartCampus@2026"})
 
 
 def _login_as(client, username, password):
@@ -105,7 +105,7 @@ def test_counselor_only_ai_and_scheduler(client):
 
 def test_counselor_sees_only_own_tickets(client):
     """辅导员只见流转到自己职责的工单（数据范围隔离）。"""
-    _login_as(client, "admin", "admin123")
+    _login_as(client, "admin", "SmartCampus@2026")
     tok = _csrf_from_session(client)
     client.post(
         "/api/chat",
@@ -121,7 +121,7 @@ def test_counselor_sees_only_own_tickets(client):
 
 def test_admin_resolves_ticket_only(client):
     """工单结案仅管理员；辅导员/学生被拒。"""
-    _login_as(client, "admin", "admin123")
+    _login_as(client, "admin", "SmartCampus@2026")
     tok = _csrf_from_session(client)
     client.post(
         "/api/chat",
@@ -142,7 +142,7 @@ def test_admin_resolves_ticket_only(client):
 
 
 def test_student_cannot_resolve(client):
-    _login_as(client, "admin", "admin123")
+    _login_as(client, "admin", "SmartCampus@2026")
     tok = _csrf_from_session(client)
     client.post(
         "/api/chat",
