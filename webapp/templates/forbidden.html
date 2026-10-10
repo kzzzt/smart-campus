@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}无权限 - 智慧校园管理平台{% endblock %}
+{% block content %}
+<div style="max-width:480px;margin:80px auto 0;text-align:center;">
+    <div class="card" style="padding:40px;">
+        <div style="width:56px;height:56px;border-radius:16px;background:#fef2f2;color:#b91c1c;display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:700;margin:0 auto 16px;">!</div>
+        <h1 style="font-size:20px;font-weight:600;">无权访问</h1>
+        <p style="color:var(--text-2);font-size:14px;margin-top:8px;">
+            当前角色{{ '（' + role_label + '）' if role_label else '' }}没有此页面的访问权限。
+        </p>
+        <a class="btn" href="/" style="margin-top:20px;text-decoration:none;display:inline-flex;">返回工作台</a>
+    </div>
+</div>
+{% endblock %}

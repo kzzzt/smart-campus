@@ -12,6 +12,8 @@
 ILLEGAL_POWER_THRESHOLD_W = 1000.0
 # 持续时长阈值（小时），超过才算"疑似违规"而非瞬时杂波
 SUSTAIN_HOURS = 2
+# 高能耗阈值：单宿舍当日最高功率超过它 -> 触发"通知对应辅导员"
+HIGH_ENERGY_THRESHOLD_W = 1500.0
 
 
 def rule_detect(records: list[dict]) -> list[dict]:
@@ -43,6 +45,61 @@ def rule_detect(records: list[dict]) -> list[dict]:
                 }
             )
     return alarms
+
+
+def summarize_rooms(records: list[dict], high_threshold_w: float = HIGH_ENERGY_THRESHOLD_W) -> list[dict]:
+    """
+    汇总每一间宿舍的能耗：当前功率、当日最高功率、平均功率、是否高能耗、负责辅导员。
+
+    返回按楼层/房间排序的列表：
+    [{"room","building","handler","current_w","max_w","avg_w","is_high"}, ...]
+    """
+    by_room: dict[str, list[dict]] = {}
+    for rec in records:
+        by_room.setdefault(rec["room"], []).append(rec)
+
+    rooms = []
+    for room, seq in by_room.items():
+        seq_sorted = sorted(seq, key=lambda x: x["ts"])
+        powers = [r["power_w"] for r in seq_sorted]
+        meta = seq_sorted[-1]
+        rooms.append({
+            "room": room,
+            "building": meta.get("building", ""),
+            "handler": meta.get("handler", ""),
+            "current_w": round(powers[-1], 1),   # 当前（最新时点）功率
+            "max_w": round(max(powers), 1),      # 当日最高功率
+            "avg_w": round(sum(powers) / len(powers), 1),
+            "is_high": max(powers) >= high_threshold_w,   # 出现过超过高能耗阈值
+            "notified": False,
+        })
+    # 按楼栋 -> 房间号排序，保证展示顺序稳定
+    return rooms
+
+
+def build_notices(rooms: list[dict]) -> list[dict]:
+    """
+    对高能耗宿舍生成"通知对应辅导员"的告警消息。
+    rooms: summarize_rooms() 输出。
+
+    返回 [{"room","handler","power_w","level","message"}, ...]
+    """
+    notices = []
+    for r in rooms:
+        if not r["is_high"]:
+            continue
+        level = "high" if r["max_w"] >= ILLEGAL_POWER_THRESHOLD_W * 2 else "warning"
+        notices.append({
+            "room": r["room"],
+            "handler": r.get("handler", ""),
+            "power_w": r["max_w"],
+            "level": level,
+            "message": (
+                f"宿舍 {r['room']} 当日最高用电 {round(r['max_w'])}W，疑似使用高功率违规电器，"
+                f"请及时查看并联系学生处理。"
+            ),
+        })
+    return notices
 
 
 def vision_detect(images: list[bytes] | None = None, candidate_rooms: list[dict] | None = None) -> dict:

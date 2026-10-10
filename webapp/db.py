@@ -37,7 +37,8 @@ CREATE TABLE IF NOT EXISTS tickets (
     handler TEXT,
     status TEXT DEFAULT 'pending',
     created_at TEXT DEFAULT (datetime('now', 'localtime')),
-    resolution TEXT
+    resolution TEXT,
+    student_id TEXT
 );
 
 CREATE TABLE IF NOT EXISTS energy_alerts (
@@ -59,6 +60,31 @@ CREATE TABLE IF NOT EXISTS energy_forecast (
     created_at TEXT DEFAULT (datetime('now', 'localtime'))
 );
 
+CREATE TABLE IF NOT EXISTS room_energy (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id TEXT,
+    room TEXT,
+    building TEXT,
+    handler TEXT,              -- 本宿舍对应辅导员（用于高能耗告警）
+    current_w REAL,            -- 当前/最新功率
+    max_w REAL,                -- 当日最高功率
+    avg_w REAL,
+    is_high INTEGER DEFAULT 0, -- 是否高能耗（需告警）
+    notified INTEGER DEFAULT 0,-- 是否已向辅导员发警告
+    created_at TEXT DEFAULT (datetime('now', 'localtime'))
+);
+
+CREATE TABLE IF NOT EXISTS energy_notices (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id TEXT,
+    room TEXT,
+    handler TEXT,              -- 收到警告的辅导员职责名
+    power_w REAL,
+    level TEXT,                -- high / warning
+    message TEXT,
+    created_at TEXT DEFAULT (datetime('now', 'localtime'))
+);
+
 CREATE TABLE IF NOT EXISTS schedules (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     run_id TEXT,
@@ -68,6 +94,16 @@ CREATE TABLE IF NOT EXISTS schedules (
     room TEXT,
     room_type TEXT,
     created_at TEXT DEFAULT (datetime('now', 'localtime'))
+);
+
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    role TEXT NOT NULL,            -- student / counselor / admin
+    display_name TEXT,
+    student_id TEXT,               -- 学生学号（角色=student 时）
+    handler TEXT                   -- 辅导员职责名（角色=counselor 时）
 );
 """
 
@@ -82,6 +118,19 @@ def init_db():
     conn = get_conn()
     conn.executescript(SCHEMA)
     conn.commit()
+    # 首次启动时写入默认 RBAC 账户（仅当 users 表为空）
+    cnt = conn.execute("SELECT COUNT(*) AS c FROM users").fetchone()["c"]
+    if cnt == 0:
+        from .seed_users import SEED_USERS
+        for u in SEED_USERS:
+            conn.execute(
+                """INSERT OR IGNORE INTO users
+                   (username, password_hash, role, display_name, student_id, handler)
+                   VALUES (?,?,?,?,?,?)""",
+                (u["username"], u["password_hash"], u["role"], u["display_name"],
+                 u.get("student_id"), u.get("handler")),
+            )
+        conn.commit()
     conn.close()
 
 
@@ -104,11 +153,12 @@ def save_ticket(ticket) -> None:
     conn = get_conn()
     conn.execute(
         """INSERT OR REPLACE INTO tickets
-           (id, intent, student_desc, slots, handler, status, resolution)
-           VALUES (?,?,?,?,?,?,?)""",
+           (id, intent, student_desc, slots, handler, status, resolution, student_id)
+           VALUES (?,?,?,?,?,?,?,?)""",
         (ticket.ticket_id, ticket.intent, ticket.student_desc,
          json.dumps(ticket.slots, ensure_ascii=False),
-         ticket.handler, ticket.status, ticket.resolution),
+         ticket.handler, ticket.status, ticket.resolution,
+         getattr(ticket, "student_id", None)),
     )
     conn.commit()
     conn.close()
@@ -164,14 +214,22 @@ def recent_conversations(limit: int = 50) -> list:
     return [dict(r) for r in rows]
 
 
-def list_tickets(status: str | None = None) -> list:
+def list_tickets(status: str | None = None, role: str = "", who: str = "") -> list:
     conn = get_conn()
+    sql = "SELECT * FROM tickets WHERE 1=1"
+    args = []
     if status:
-        rows = conn.execute(
-            "SELECT * FROM tickets WHERE status=? ORDER BY created_at DESC", (status,)
-        ).fetchall()
-    else:
-        rows = conn.execute("SELECT * FROM tickets ORDER BY created_at DESC").fetchall()
+        sql += " AND status=?"
+        args.append(status)
+    # 数据范围：student 只看自己，counselor 只看 callback 到自己职责的工单
+    if role == "student" and who:
+        sql += " AND student_id=?"
+        args.append(who)
+    elif role == "counselor" and who:
+        sql += " AND handler=?"
+        args.append(who)
+    sql += " ORDER BY created_at DESC"
+    rows = conn.execute(sql, args).fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
@@ -204,6 +262,98 @@ def list_schedules(limit: int = 100) -> list:
     rows = conn.execute(
         """SELECT * FROM schedules
            WHERE run_id = (SELECT run_id FROM schedules ORDER BY id DESC LIMIT 1)
+           ORDER BY id ASC LIMIT ?""",
+        (limit,),
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def list_schedules_by_teacher(teacher: str, limit: int = 200) -> list:
+    """返回最新一次排课结果中，某位教师相关的课程行。未匹配则返回空列表。"""
+    conn = get_conn()
+    rows = conn.execute(
+        """SELECT * FROM schedules
+           WHERE run_id=(SELECT run_id FROM schedules ORDER BY id DESC LIMIT 1)
+             AND teacher=?
+           ORDER BY id ASC LIMIT ?""",
+        (teacher, limit),
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+# ---------------- 账户（RBAC） ----------------
+
+def get_user(username: str) -> dict | None:
+    conn = get_conn()
+    row = conn.execute(
+        "SELECT * FROM users WHERE username=?", (username,)
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def list_teachers() -> list[str]:
+    """排课数据中实际出现的全部教师名（用于辅导员筛选与自己相关课程）。"""
+    conn = get_conn()
+    rows = conn.execute(
+        "SELECT DISTINCT teacher FROM schedules ORDER BY teacher"
+    ).fetchall()
+    conn.close()
+    return [r["teacher"] for r in rows if r["teacher"]]
+
+
+# ---------------- 宿舍能耗（每宿舍当前/最高 + 辅导员通知） ----------------
+
+def save_room_energy(rows: list, run_id: str | None = None) -> None:
+    conn = get_conn()
+    for r in rows:
+        conn.execute(
+            """INSERT INTO room_energy
+               (run_id, room, building, handler, current_w, max_w, avg_w, is_high, notified)
+               VALUES (?,?,?,?,?,?,?,?,?)""",
+            (run_id, r.get("room"), r.get("building"), r.get("handler"),
+             r.get("current_w"), r.get("max_w"), r.get("avg_w"),
+             1 if r.get("is_high") else 0,
+             1 if r.get("notified") else 0),
+        )
+    conn.commit()
+    conn.close()
+
+
+def save_energy_notice(notices: list) -> None:
+    conn = get_conn()
+    for n in notices:
+        conn.execute(
+            """INSERT INTO energy_notices (run_id, room, handler, power_w, level, message)
+               VALUES (?,?,?,?,?,?)""",
+            (n.get("run_id"), n.get("room"), n.get("handler"),
+             n.get("power_w"), n.get("level"), n.get("message")),
+        )
+    conn.commit()
+    conn.close()
+
+
+def list_room_energy(limit: int = 100) -> list:
+    """最新一次运行的全部宿舍能耗明细（按建筑-房间排序）。"""
+    conn = get_conn()
+    rows = conn.execute(
+        """SELECT * FROM room_energy
+           WHERE run_id=(SELECT run_id FROM room_energy ORDER BY id DESC LIMIT 1)
+           ORDER BY id ASC LIMIT ?""",
+        (limit,),
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def list_energy_notices(limit: int = 30) -> list:
+    """最新一次运行的辅导员告警通知。"""
+    conn = get_conn()
+    rows = conn.execute(
+        """SELECT * FROM energy_notices
+           WHERE run_id=(SELECT run_id FROM energy_notices ORDER BY id DESC LIMIT 1)
            ORDER BY id ASC LIMIT ?""",
         (limit,),
     ).fetchall()

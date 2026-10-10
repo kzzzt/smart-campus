@@ -82,16 +82,16 @@
             </a>
             <nav class="nav">
                 <a href="/" class="{{ 'active' if request.path=='/' else '' }}">工作台</a>
-                <a href="/ai" class="{{ 'active' if request.path=='/ai' else '' }}">智能客服</a>
-                <a href="/energy" class="{{ 'active' if request.path=='/energy' else '' }}">能耗监控</a>
-                <a href="/scheduler" class="{{ 'active' if request.path=='/scheduler' else '' }}">排课管理</a>
+                {% for p in allowed_pages %}
+                <a href="{{ p }}" class="{{ 'active' if request.path==p else '' }}">{{ {'/ai':'智能客服','/energy':'能耗监控','/scheduler':'排课管理'}[p] }}</a>
+                {% endfor %}
             </nav>
             <div class="user-area">
                 {% if is_logged_in %}
-                <span style="font-size:13px;color:var(--text-2);">管理员</span>
+                <span style="font-size:13px;color:var(--text-2);">{{ current_user.display_name }}<span style="margin-left:6px;color:var(--text-3);">（{{ ROLES.get(current_user.role, current_user.role) }}）</span></span>
                 <a class="icon-btn" href="/logout">退出登录</a>
                 {% else %}
-                <a class="icon-btn" href="/login">管理登录</a>
+                <a class="icon-btn" href="/login">登录</a>
                 {% endif %}
             </div>
         </div>

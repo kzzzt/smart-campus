@@ -11,8 +11,11 @@
     <p class="card-sub" style="max-width:860px;">
         本次使用遗传算法（种群 30 × 迭代 100 代）求解课程-时段-教室的最优分配：满足硬约束（教师 / 教室无冲突、容量足够、需电脑的课入机房）
         并优化软约束（教室类型 / 容量匹配度）。点击下方按钮触发求解。
+        {% if current_user and current_user.role == 'student' %}<br><span style="color:var(--text-3);font-size:12px;">当前角色为{{ ROLES.get(current_user.role) }}，仅可查看，重排需管理人员 / 辅导员账号操作。</span>{% endif %}
     </p>
+    {% if not current_user or current_user.role != 'student' %}
     <button class="btn" id="runBtn" onclick="runSchedule()">重新求解排课</button>
+    {% endif %}
     <div id="result" style="margin-top:14px;"></div>
 </div>
 
