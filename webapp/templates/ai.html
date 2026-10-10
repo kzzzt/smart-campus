@@ -116,7 +116,20 @@
             botDiv.appendChild(document.createTextNode(data.answer));
             box.appendChild(botDiv);
             box.scrollTop = box.scrollHeight;
-            setTimeout(()=>location.reload(), 400);
+            refreshSidebar();
+        }
+        // 只刷新右侧"工单流转/最近咨询记录"面板，不整页跳转，保留对话记录
+        async function refreshSidebar() {
+            try {
+                const r = await fetch('/ai', {headers:{'X-CSRF-Token':'{{ csrf_token }}'}});
+                if (!r.ok) return;
+                const html = await r.text();
+                const doc = new DOMParser().parseFromString(html, 'text/html');
+                const tickets = doc.getElementById('tickets');
+                if (tickets) document.getElementById('tickets').innerHTML = tickets.innerHTML;
+                const table = doc.querySelector('.panel table');
+                if (table) document.querySelector('.panel table').outerHTML = table.outerHTML;
+            } catch(e) { /* 静默：侧栏刷新失败不影响对话 */ }
         }
     </script>
 </body>
