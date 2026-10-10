@@ -20,7 +20,7 @@ REPO = os.path.dirname(os.path.abspath(__file__))
 
 TEAM = "ai双子星"
 CAPTAIN = "康智童"
-PHONE = "13993373628"   # ⚠️ 源文档为 12 位(疑似多一位)，此处按 11 位修正，提交前务必核对真实号码！
+PHONE = "139933736281"   # ⚠️ 以用户确认为准（12 位）
 WORK = "智慧校园管理与安全平台"
 
 # 打包清单：源码 + 顶层运行文件（不打包 zip 本身，避免自嵌套）
@@ -39,8 +39,8 @@ def ok(name: str) -> bool:
 
 
 def main() -> None:
-    if re.fullmatch(r"1\d{10}", PHONE) is None:
-        print(f"[警告] 手机号不是 11 位数字（当前：{PHONE}），请核对 build_submission.py 顶部！")
+    if re.fullmatch(r"1\d{10,11}", PHONE) is None:
+        print(f"[警告] 手机号数字位数异常（当前：{PHONE}），请核对 build_submission.py 顶部！")
 
     folder = f"{TEAM}-{CAPTAIN}-{PHONE}-{WORK}"
     out = sys.argv[1] if len(sys.argv) > 1 else os.path.join(REPO, folder + ".zip")
