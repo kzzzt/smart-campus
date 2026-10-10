@@ -118,19 +118,18 @@ def init_db():
     conn = get_conn()
     conn.executescript(SCHEMA)
     conn.commit()
-    # 首次启动时写入默认 RBAC 账户（仅当 users 表为空）
-    cnt = conn.execute("SELECT COUNT(*) AS c FROM users").fetchone()["c"]
-    if cnt == 0:
-        from .seed_users import SEED_USERS
-        for u in SEED_USERS:
-            conn.execute(
-                """INSERT OR IGNORE INTO users
-                   (username, password_hash, role, display_name, student_id, handler)
-                   VALUES (?,?,?,?,?,?)""",
-                (u["username"], u["password_hash"], u["role"], u["display_name"],
-                 u.get("student_id"), u.get("handler")),
-            )
-        conn.commit()
+    # 幂等写入默认 RBAC 账户：逐条 INSERT OR IGNORE，新增账号(如楼栋辅导员)
+    # 会自动补进已有的旧库（不再要求 users 表为空）
+    from .seed_users import SEED_USERS
+    for u in SEED_USERS:
+        conn.execute(
+            """INSERT OR IGNORE INTO users
+               (username, password_hash, role, display_name, student_id, handler)
+               VALUES (?,?,?,?,?,?)""",
+            (u["username"], u["password_hash"], u["role"], u["display_name"],
+             u.get("student_id"), u.get("handler")),
+        )
+    conn.commit()
     conn.close()
 
 

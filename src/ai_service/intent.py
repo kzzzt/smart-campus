@@ -17,7 +17,7 @@ from .llm import chat
 
 # 意图 -> 关键词
 INTENT_KEYWORDS = {
-    "leave":       ["请假", "病假", "事假", "休学", "请假流程"],
+    "leave":       ["请假", "病假", "事假", "请假流程"],
     "scholarship": ["奖学金", "评奖", "助学金", "奖学金评定"],
     "status_change": ["学籍", "转专业", "休学", "退学", "复学", "学籍异动", "学籍变更"],
     "other":       [],
@@ -41,8 +41,12 @@ def extract_intent(text: str) -> tuple[str, float]:
     best_intent, best_score = "other", 0.0
     for intent, kws in INTENT_KEYWORDS.items():
         hit = sum(1 for kw in kws if kw in text)
-        if hit and hit > best_score:
-            best_intent, best_score = intent, float(hit) / max(len(kws), 1)
+        if hit:
+            # 用「命中率」比较（而非 hit 计数 > best_score 比例，后者会因数值恒大导致
+            # 总是取最后一个命中的意图）
+            ratio = hit / max(len(kws), 1)
+            if ratio > best_score:
+                best_intent, best_score = intent, ratio
     return best_intent, best_score
 
 

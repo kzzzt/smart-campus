@@ -30,18 +30,28 @@ def rule_detect(records: list[dict]) -> list[dict]:
         by_room.setdefault(rec["room"], []).append(rec)
 
     for room, seq in by_room.items():
-        # 统计连续超过阈值的小时数
-        over_hours = []
-        for rec in sorted(seq, key=lambda x: x["ts"]):
+        # 统计连续超过阈值的小时数：取「最长连续段」，长度 >= SUSTAIN_HOURS 才算，
+        # 避免稀疏尖峰（间隔着正常时段的多次超阈值）被误判成"持续 N 小时"。
+        seq_sorted = sorted(seq, key=lambda x: x["ts"])
+        longest = 0
+        seg: list[dict] = []
+        run: list[dict] = []
+        for rec in seq_sorted:
             if rec["power_w"] > ILLEGAL_POWER_THRESHOLD_W:
-                over_hours.append(rec)
-        if len(over_hours) >= SUSTAIN_HOURS:
+                run.append(rec)
+            else:
+                if len(run) > longest:
+                    longest, seg = len(run), run
+                run = []
+        if len(run) > longest:
+            longest, seg = len(run), run
+        if longest >= SUSTAIN_HOURS:
             alarms.append(
                 {
                     "room": room,
-                    "ts": over_hours[-1]["ts"],
-                    "power_w": round(max(r["power_w"] for r in over_hours), 1),
-                    "reason": f"持续超过 {ILLEGAL_POWER_THRESHOLD_W}W 达 {len(over_hours)} 小时，疑似违规电器（电热毯/电煮锅等高功率设备）",
+                    "ts": seg[-1]["ts"],
+                    "power_w": round(max(r["power_w"] for r in seg), 1),
+                    "reason": f"连续超过 {ILLEGAL_POWER_THRESHOLD_W}W 达 {longest} 小时，疑似违规电器（电热毯/电煮锅等高功率设备）",
                 }
             )
     return alarms

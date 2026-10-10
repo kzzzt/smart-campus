@@ -279,9 +279,13 @@ def index():
 
 @app.route("/ai")
 def ai_page():
-    recent = db.recent_conversations(limit=20)
-    # 按角色过滤工单：student 只看自己，counselor 只看流转到自己的
     u = _current_user()
+    # 学生只能看到自己的对话记录，避免看到其它学生的学号/内容
+    recent = db.recent_conversations(limit=20)
+    if u and u["role"] == "student":
+        sid = u.get("student_id") or ""
+        recent = [c for c in recent if c["student_id"] == sid]
+    # 按角色过滤工单：student 只看自己，counselor 只看流转到自己的
     role, who = (u["role"], u["student_id"]) if u and u["role"] == "student" else ((u["role"], u["handler"]) if u and u["role"] == "counselor" else ("", ""))
     tickets = db.list_tickets(role=role, who=who)
     # 辅导员：在 AI 页同时展示流转到自己职责的能耗告警（学生/管理员不需要）

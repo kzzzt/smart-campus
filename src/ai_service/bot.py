@@ -9,6 +9,7 @@ AI 教务智能客服主逻辑（bot）。
 """
 
 from .intent import understand
+from .llm import chat
 from .ticket import TicketSystem
 
 # 知识库：意图 -> 常见问题答案（初稿为内置固定答案，可扩展为向量检索）
@@ -33,6 +34,28 @@ KNOWLEDGE_BASE = {
         "请留意处理结果。"
     ),
 }
+
+# 大模型生成回答的提示词：让模型基于知识库给出准确、可操作的回答
+ANSWER_PROMPT = (
+    "你是智慧校园的 AI 教务辅导员。请依据下面的【知识库】用中文友好、准确地回答学生问题，"
+    "尽量分点给出可操作的流程步骤；如果问题超出知识库范围，就如实说明并建议转人工处理。\n"
+    "【知识库】\n{knowledge}"
+)
+
+
+def _compose_answer(intent: str, question: str, kb_answer: str) -> str:
+    """
+    生成回答：配置了 LLM_API_KEY 时调用大模型基于知识库直接作答；
+    无 key / 断网 / 超时 / 异常 自动回退到知识库静态答案，保证离线可跑。
+    """
+    resp = chat(
+        [{"role": "user", "content": question}],
+        system=ANSWER_PROMPT.format(knowledge=kb_answer),
+    )
+    # llm.chat() 未配置/失败时返回以 [本地规则回复] 开头的降级文本
+    if resp and not resp.startswith("[本地规则回复]"):
+        return resp
+    return kb_answer
 
 
 class CampusAIBot:
@@ -81,8 +104,9 @@ class CampusAIBot:
                 },
             }
 
-        # 可自动应答：返回知识库答案
-        answer = KNOWLEDGE_BASE.get(u["intent"], KNOWLEDGE_BASE["other"])
+        # 可自动应答：优先用大模型基于知识库生成回答；未配 key/失败回退静态答案
+        kb = KNOWLEDGE_BASE.get(u["intent"], KNOWLEDGE_BASE["other"])
+        answer = _compose_answer(u["intent"], student_desc, kb)
         return {
             "student_id": student_id,
             "input": student_desc,
