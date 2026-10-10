@@ -5,11 +5,13 @@
     1. 意图（intent）：leave / scholarship / status_change / other
     2. 槽位（slots）：{ 学生学号, 请假类型, 奖学金类别, 学籍异动类型, ... }
 
-初稿采用「关键词规则 + 可替换的 LLM 提示词」双通道：
+采用「关键词规则 + LLM 语义理解」双通道：
     - 规则通道：离线、快速、稳定，Demo 默认开启；
     - LLM 通道：当规则通道置信度不足时调用大模型做语义理解，
-      体现「大模型 + 规则」结合的工程设计。
+      体现「大模型 + 规则」结合的工程设计（未配置 key 时自动降级回规则）。
 """
+
+import re
 
 from .llm import chat
 
@@ -69,19 +71,23 @@ def understand(text: str) -> dict:
     intent, score = extract_intent(text)
     slots = extract_slots(text)
 
-    # 规则置信度过低 -> 尝试 LLM 语义理解（示意）
+    # 规则置信度过低 -> 尝试 LLM 语义理解（真实调用 chat()，未配置 key 时自动降级回规则）
     llm_used = False
     if score < 0.25:
         llm_used = True
-        # 示意：调用大模型返回 JSON（初稿回退到规则结果，避免外部依赖）
-        # resp = chat([{"role": "user", "content": text}], system=INTENT_LLM_PROMPT)
-        # 解析 resp 中的意图...
-        if "奖学金" in text:
-            intent, score = "scholarship", 0.9
-        elif "请假" in text:
-            intent, score = "leave", 0.9
-        elif "学籍" in text or "转专业" in text:
-            intent, score = "status_change", 0.9
+        try:
+            resp = chat(
+                [{"role": "user", "content": text}],
+                system=INTENT_LLM_PROMPT,
+            ) or ""
+            m = re.search(r'"intent"\s*:\s*"([^"]+)"', resp)
+            label = (m.group(1) if m else resp).strip().lower()
+            for cand in ("leave", "scholarship", "status_change", "other"):
+                if cand in label:
+                    intent, score = cand, 0.9
+                    break
+        except Exception:
+            pass  # 失败就用规则结果，保证不崩
 
     # 人工兜底：仅当无法识别意图（other）时转人工/生成工单。
     # 之前用 "or not slots" 会导致明确的意图问题（如"请假的流程"）

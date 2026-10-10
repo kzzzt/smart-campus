@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS energy_alerts (
 
 CREATE TABLE IF NOT EXISTS energy_forecast (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id TEXT,
     slot_ts TEXT,
     power_w REAL,
     is_peak INTEGER DEFAULT 0,
@@ -60,6 +61,7 @@ CREATE TABLE IF NOT EXISTS energy_forecast (
 
 CREATE TABLE IF NOT EXISTS schedules (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id TEXT,
     time_slot TEXT,
     course TEXT,
     teacher TEXT,
@@ -124,27 +126,27 @@ def save_energy_alert(a: dict) -> None:
     conn.close()
 
 
-def save_forecast(predicted: list, peaks: list) -> None:
+def save_forecast(predicted: list, peaks: list, run_id: str | None = None) -> None:
     conn = get_conn()
     peak_ids = {p["ts"].strftime("%Y-%m-%d %H:%M:%S") for p in peaks}
     for p in predicted:
         ts = p["ts"].strftime("%Y-%m-%d %H:%M:%S")
         conn.execute(
-            """INSERT INTO energy_forecast (slot_ts, power_w, is_peak)
-               VALUES (?,?,?)""",
-            (ts, p["power_w"], 1 if ts in peak_ids else 0),
+            """INSERT INTO energy_forecast (run_id, slot_ts, power_w, is_peak)
+               VALUES (?,?,?,?)""",
+            (run_id, ts, p["power_w"], 1 if ts in peak_ids else 0),
         )
     conn.commit()
     conn.close()
 
 
-def save_schedule(rows: list) -> None:
+def save_schedule(rows: list, run_id: str | None = None) -> None:
     conn = get_conn()
     for r in rows:
         conn.execute(
-            """INSERT INTO schedules (time_slot, course, teacher, room, room_type)
-               VALUES (?,?,?,?,?)""",
-            (r.get("time_slot"), r.get("course"), r.get("teacher"),
+            """INSERT INTO schedules (run_id, time_slot, course, teacher, room, room_type)
+               VALUES (?,?,?,?,?,?)""",
+            (run_id, r.get("time_slot"), r.get("course"), r.get("teacher"),
              r.get("room"), r.get("room_type")),
         )
     conn.commit()
@@ -185,17 +187,25 @@ def list_energy_alerts(limit: int = 50) -> list:
 
 def list_forecast(limit: int = 48) -> list:
     conn = get_conn()
+    # 只返回最新一次 run 的预测，避免多次运行的 24h 序列互相污染展示
     rows = conn.execute(
-        "SELECT * FROM energy_forecast ORDER BY id DESC LIMIT ?", (limit,)
+        """SELECT * FROM energy_forecast
+           WHERE run_id = (SELECT run_id FROM energy_forecast ORDER BY id DESC LIMIT 1)
+           ORDER BY id ASC LIMIT ?""",
+        (limit,),
     ).fetchall()
     conn.close()
-    return [dict(r) for r in rows][::-1]
+    return [dict(r) for r in rows]
 
 
 def list_schedules(limit: int = 100) -> list:
     conn = get_conn()
+    # 只返回最新一次 run 的排课结果
     rows = conn.execute(
-        "SELECT * FROM schedules ORDER BY id DESC LIMIT ?", (limit,)
+        """SELECT * FROM schedules
+           WHERE run_id = (SELECT run_id FROM schedules ORDER BY id DESC LIMIT 1)
+           ORDER BY id ASC LIMIT ?""",
+        (limit,),
     ).fetchall()
     conn.close()
-    return [dict(r) for r in rows][::-1]
+    return [dict(r) for r in rows]

@@ -4,6 +4,7 @@
 核心闭环：AI 无法处理的复杂情况 -> 自动生成工单 -> 按类型流转给对应辅导员。
 """
 
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
@@ -41,12 +42,12 @@ class TicketSystem:
 
     def __init__(self):
         self.tickets: list[Ticket] = []
-        self._seq = 0
 
     def create(self, intent: str, student_desc: str, slots: dict) -> Ticket:
-        self._seq += 1
+        # 唯一工单 ID：日期 + 短 UUID，避免跨重启/同进程重复被 INSERT OR REPLACE 静默覆盖
+        ticket_id = f"TK-{datetime.now():%Y%m%d}-{uuid.uuid4().hex[:8]}"
         t = Ticket(
-            ticket_id=f"TK-{datetime.now():%Y%m%d}-{self._seq:04d}",
+            ticket_id=ticket_id,
             intent=intent,
             student_desc=student_desc,
             slots=slots,

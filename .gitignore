@@ -8,6 +8,8 @@ __pycache__/
 .venv/
 venv/
 env/
+.env
+*.env
 
 # 运行时生成的 SQLite 数据文件
 *.db

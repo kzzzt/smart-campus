@@ -83,11 +83,20 @@
     </main>
     <footer>AI 教务智能客服 · 智慧校园管理与安全平台</footer>
     <script>
+        // 转义 HTML，防止自/存储 XSS（用户输入与大模型输出均不可信）
+        function esc(s) {
+            return String(s == null ? '' : s)
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
         async function send() {
             const msg = document.getElementById('msg').value.trim();
             if (!msg) return;
             const box = document.getElementById('chatbox');
-            box.innerHTML += '<div class="msg user">' + msg + '</div>';
+            const userDiv = document.createElement('div');
+            userDiv.className = 'msg user';
+            userDiv.textContent = msg;
+            box.appendChild(userDiv);
             document.getElementById('msg').value = '';
             const r = await fetch('/api/chat', {
                 method:'POST',
@@ -95,9 +104,16 @@
                 body: JSON.stringify({message: msg, student_id:'20230001'})
             });
             const data = await r.json();
-            let meta = '意图:' + data.intent + ' | 置信度:' + data.confidence;
-            if (data.needs_human) meta += ' | ⚠️已生成工单→' + (data.ticket ? data.ticket.handler : '辅导员');
-            box.innerHTML += '<div class="msg bot"><div class="meta">AI 辅导员 · ' + meta + '</div>' + data.answer + '</div>';
+            let meta = '意图:' + esc(data.intent) + ' | 置信度:' + esc(data.confidence);
+            if (data.needs_human) meta += ' | ⚠️已生成工单→' + (data.ticket ? esc(data.ticket.handler) : '辅导员');
+            const botDiv = document.createElement('div');
+            botDiv.className = 'msg bot';
+            const metaDiv = document.createElement('div');
+            metaDiv.className = 'meta';
+            metaDiv.textContent = 'AI 辅导员 · ' + meta;
+            botDiv.appendChild(metaDiv);
+            botDiv.appendChild(document.createTextNode(data.answer));
+            box.appendChild(botDiv);
             box.scrollTop = box.scrollHeight;
             setTimeout(()=>location.reload(), 400);
         }

@@ -12,6 +12,7 @@ Web 应用 —— 智慧校园管理与安全平台（可交互版）。
 
 import sys
 import os
+import uuid
 from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -113,11 +114,12 @@ def api_energy_run():
     records = sim.generate_day(day)
 
     full = detect(records, use_vision=False)
+    run_id = f"E{datetime.now():%Y%m%d%H%M%S}-{uuid.uuid4().hex[:4]}"
     for a in full["rule_alarms"]:
         db.save_energy_alert(a)
 
     pred = forecast_peak(records[:48], forecast_hours=24, peak_threshold_w=2500)  # 阈值低于曲线峰值，否则恒 0 高峰
-    db.save_forecast(pred["predicted"], pred["peak_slots"])
+    db.save_forecast(pred["predicted"], pred["peak_slots"], run_id=run_id)
 
     return jsonify({
         "alarms": full["rule_alarms"],
@@ -148,8 +150,12 @@ def api_schedule_run():
     ]
     sched = GeneticScheduler(courses, rooms, pop_size=30, generations=100)  # 多时段编码，100 代收敛到 0 冲突
     result = sched.solve()
-    db.save_schedule(result["schedule"])
-    return jsonify({"schedule": result["schedule"], "fitness": result["fitness"], "conflicts": result["conflicts"]})
+    run_id = f"S{datetime.now():%Y%m%d%H%M%S}-{uuid.uuid4().hex[:4]}"
+    db.save_schedule(result["schedule"], run_id=run_id)
+    return jsonify({
+        "schedule": result["schedule"], "fitness": result["fitness"],
+        "conflicts": result["conflicts"], "run_id": run_id,
+    })
 
 
 @app.route("/api/tickets", methods=["GET"])
