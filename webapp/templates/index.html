@@ -22,20 +22,20 @@
 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;margin-bottom:20px;">
     <div class="card" style="display:flex;flex-direction:column;margin-bottom:0;">
         <div style="font-size:14px;font-weight:600;margin-bottom:6px;">AI 智能客服</div>
-        <p style="color:var(--text-2);font-size:13px;flex:1;">7×24 小时解答请假、奖学金、学籍异动等问题；复杂情况自动生成工单并流转给对应辅导员。{% if current_user and current_user.role=='student' %}您可在此咨询并追踪自己的工单状态。{% endif %}</p>
+        <p style="color:var(--text-2);font-size:13px;flex:1;">7×24 小时解答请假、奖学金、学籍异动等问题；复杂情况自动生成工单并流转给对应辅导员。{% if current_user and current_user.role=='student' %}您可在此咨询并追踪自己的工单状态。{% endif %}{% if current_user and current_user.role=='counselor' %}您可在此查看待办工单并回复处理。{% endif %}</p>
         <a class="btn" href="/ai" style="margin-top:16px;align-self:flex-start;">进入咨询</a>
     </div>
     {% if '/energy' in allowed_pages %}
     <div class="card" style="display:flex;flex-direction:column;margin-bottom:0;">
         <div style="font-size:14px;font-weight:600;margin-bottom:6px;">能耗与安全预警</div>
-        <p style="color:var(--text-2);font-size:13px;flex:1;">结合 IoT 功率与智算视觉双通道，识别宿舍违规电器、预测用电高峰，逐宿舍能耗监控。{% if current_user and current_user.role=='student' %}（只读）{% endif %}{% if current_user and current_user.role=='admin' %}可采集分析并向辅导员发出高能耗告警。{% endif %}</p>
+        <p style="color:var(--text-2);font-size:13px;flex:1;">结合 IoT 功率与智算视觉双通道，识别宿舍违规电器、预测用电高峰，逐宿舍能耗监控。{% if current_user and current_user.role=='admin' %}可采集分析并向辅导员发出高能耗告警。{% endif %}</p>
         <a class="btn" href="/energy" style="margin-top:16px;align-self:flex-start;">查看监控</a>
     </div>
     {% endif %}
     {% if '/scheduler' in allowed_pages %}
     <div class="card" style="display:flex;flex-direction:column;margin-bottom:0;">
         <div style="font-size:14px;font-weight:600;margin-bottom:6px;">智能排课与调度</div>
-        <p style="color:var(--text-2);font-size:13px;flex:1;">遗传算法 + 大模型约束理解，解决排课冲突，按课程类型智能分配最合适的教室。{% if current_user and current_user.role=='counselor' %}（教师视角查看自己的课程）{% endif %}{% if current_user and current_user.role=='student' %}（只读）{% endif %}</p>
+        <p style="color:var(--text-2);font-size:13px;flex:1;">遗传算法 + 大模型约束理解，解决排课冲突，按课程类型智能分配最合适的教室。{% if current_user and current_user.role=='admin' %}（管理人员）{% endif %}</p>
         <a class="btn" href="/scheduler" style="margin-top:16px;align-self:flex-start;">查看排课</a>
     </div>
     {% endif %}

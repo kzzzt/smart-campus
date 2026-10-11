@@ -42,8 +42,8 @@ ROLES = {
 # 各角色可访问的页面
 ROLE_PAGES = {
     "student": ["/ai"],                       # 学生：仅 AI 客服（不可见能耗/排课）
-    "counselor": ["/ai", "/scheduler"],       # 辅导员：AI 客服 + 排课
-    "admin": ["/ai", "/energy", "/scheduler"],# 管理人员：全部
+    "counselor": ["/ai"],                     # 辅导员：AI 客服 + 对应工单的查看与回复（排课归管理员）
+    "admin": ["/ai", "/energy", "/scheduler"],# 管理人员：全部（含排课求解）
 }
 # 兼容引用（学生不再只读浏览能耗/排课，置空）
 READ_ONLY_PAGES_FOR_STUDENT = []
@@ -237,9 +237,13 @@ def _guard():
             if path.startswith("/api/tickets/") and path.endswith("/resolve"):
                 if role != "admin":
                     return jsonify({"error": "仅管理人员可结案工单"}), 403
-            # 排课求解：管理员 / 辅导员
-            if path == "/api/schedule/run" and role not in ("admin", "counselor"):
-                return jsonify({"error": "当前角色无排课修改权限"}), 403
+            # 工单回复：辅导员（仅能回流转到自己职责的工单，权限在路由内按 handler 二次校验）或管理员
+            if path.startswith("/api/tickets/") and path.endswith("/reply"):
+                if role not in ("counselor", "admin"):
+                    return jsonify({"error": "当前角色无工单回复权限"}), 403
+            # 排课求解：仅管理员（辅导员不再具备排课权限）
+            if path == "/api/schedule/run" and role != "admin":
+                return jsonify({"error": "仅管理人员可排课"}), 403
             # 能耗运行：仅管理
             if path == "/api/energy/run" and role != "admin":
                 return jsonify({"error": "仅管理人员可触发能耗分析"}), 403
@@ -309,13 +313,8 @@ def energy_page():
 
 @app.route("/scheduler")
 def scheduler_page():
-    u = _current_user()
-    # 辅导员：只展示与自己相关的课程（handler 若匹配排课教师名则过滤，否则显示全部）
-    if u and u["role"] == "counselor" and u.get("handler"):
-        by_teacher = db.list_schedules_by_teacher(u["handler"])
-        schedule = by_teacher if by_teacher else db.list_schedules()
-    else:
-        schedule = db.list_schedules()
+    # 排课功能仅管理人员可用（页面级已在 _guard 限制 /scheduler 仅 admin）
+    schedule = db.list_schedules()
     return render_template("scheduler.html", schedule=schedule)
 
 
@@ -441,6 +440,29 @@ def api_resolve(tid):
     conn.commit()
     conn.close()
     return jsonify({"ok": True, "changed": cur.rowcount > 0})
+
+
+@app.route("/api/tickets/<tid>/reply", methods=["POST"])
+def api_reply(tid):
+    """辅导员回复工单：将处理意见写入工单，并推进状态为 processing（已答复）。
+    - 管理员可回复任意工单；
+    - 辅导员仅能回复流转到自己职责（handler 匹配）的工单。
+    """
+    u = _current_user()
+    data = request.get_json(force=True) or {}
+    reply = (data.get("reply") or "").strip()
+    if not reply:
+        return jsonify({"error": "回复内容不能为空"}), 400
+    # 权限二次校验：辅导员必须匹配该工单的 handler
+    rec = db.get_ticket(tid)
+    if not rec:
+        return jsonify({"error": "工单不存在"}), 404
+    if u and u["role"] == "counselor" and rec["handler"] != (u.get("handler") or ""):
+        return jsonify({"error": "仅可回复流转到本人职责的工单"}), 403
+    updated = db.reply_ticket(tid, reply)
+    if not updated:
+        return jsonify({"error": "该工单已结案或不存在"}), 400
+    return jsonify({"ok": True, "ticket": updated})
 
 
 if __name__ == "__main__":

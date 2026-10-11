@@ -27,13 +27,24 @@
     <!-- 右：工单流转 + 咨询记录 -->
     <div>
         <div class="card">
-            <div class="card-title">工单流转</div>
+            <div class="card-title">工单流转{% if current_user and current_user.role=='counselor' %}（我的待办）{% endif %}</div>
             <div id="tickets">
                 {% for t in tickets %}
                 <div style="border-left:3px solid var(--warning);background:#fffbeb;padding:10px 12px;border-radius:6px;font-size:13px;margin-bottom:10px;">
-                    <div><b style="color:#92400e;">{{ t.handler }}</b> <span class="tag {{ 'tag-green' if t.status=='resolved' else 'tag-amber' }}">{{ t.status }}</span></div>
+                    <div><b style="color:#92400e;">{{ t.handler }}</b> <span class="tag {{ 'tag-green' if t.status=='resolved' else 'tag-amber' }}">{{ {'pending':'待处理','processing':'处理中','resolved':'已结案'}.get(t.status,t.status) }}</span></div>
                     <div style="margin-top:4px;color:var(--text);">{{ t.student_desc }}</div>
-                    <div style="font-size:12px;color:var(--text-3);margin-top:4px;">{{ t.id }} · {{ t.created_at }}</div>
+                    <div style="font-size:12px;color:var(--text-3);margin-top:4px;">{{ t.id }} · {{ t.created_at }}{% if t.student_id %} · 学号 {{ t.student_id }}{% endif %}</div>
+                    {% if (t.reply or '').strip() %}
+                    <div style="margin-top:6px;padding:8px 10px;background:#eff6ff;border-radius:6px;color:#1e40af;">
+                        <b style="font-size:12px;">辅导员回复（{{ t.replied_at }}）：</b><br>{{ t.reply }}
+                    </div>
+                    {% endif %}
+                    {% if t.status != 'resolved' and current_user and current_user.role in ('counselor','admin') %}
+                    <div style="margin-top:8px;display:flex;gap:8px;">
+                        <input type="text" id="reply-{{ t.id }}" placeholder="填写处理意见后提交回复…" style="flex:1;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;outline:none;">
+                        <button class="btn" style="padding:8px 14px;font-size:13px;" onclick="replyTicket('{{ t.id }}')">回复</button>
+                    </div>
+                    {% endif %}
                 </div>
                 {% else %}
                 <p style="color:var(--text-3);font-size:13px;">暂无工单。当 AI 无法自动处理问题时会在此生成工单。</p>
@@ -119,6 +130,23 @@
         box.appendChild(botDiv);
         box.scrollTop = box.scrollHeight;
         refreshSidebar();
+    }
+    // 辅导员回复工单
+    async function replyTicket(tid) {
+        const input = document.getElementById('reply-' + tid);
+        const reply = input ? input.value.trim() : '';
+        if (!reply) { alert('请先填写回复内容'); return; }
+        try {
+            const r = await fetch('/api/tickets/' + tid + '/reply', {
+                method: 'POST',
+                headers: {'Content-Type':'application/json', 'X-CSRF-Token':'{{ csrf_token }}'},
+                body: JSON.stringify({reply: reply})
+            });
+            const data = await r.json();
+            if (!r.ok) { alert(data.error || '回复失败'); return; }
+            input.value = '';
+            refreshSidebar();
+        } catch(e) { alert('回复失败：' + e.message); }
     }
     // 只刷新右侧"工单流转/最近咨询记录"面板，保留对话记录
     async function refreshSidebar() {

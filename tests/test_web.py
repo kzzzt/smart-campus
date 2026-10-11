@@ -92,15 +92,58 @@ def test_student_can_chat_and_create_ticket(client):
     assert client.post("/api/schedule/run", headers={"X-CSRF-Token": tok}).status_code == 403
 
 
-def test_counselor_only_ai_and_scheduler(client):
-    """辅导员：AI 客服 + 排课；能耗页/能耗运行被拒。"""
+def test_counselor_only_ai_and_reply(client):
+    """辅导员：AI 客服 + 工单回复；排课（页/API）与能耗运行被拒（排课归管理员）。"""
     _login_as(client, "counselor", "cou123")
     assert client.get("/ai").status_code == 200
-    assert client.get("/scheduler").status_code == 200
+    assert client.get("/scheduler").status_code == 403
     assert client.get("/energy").status_code == 403
+    assert client.post("/api/schedule/run").status_code == 403
     assert client.post("/api/energy/run").status_code == 403
+
+
+def test_counselor_can_reply_own_ticket(client):
+    """流转到辅导员职责（综合事务辅导员）的工单，该辅导员可回复；
+    其他职责辅导员（学籍与请假业务辅导员）回复被拒 403。"""
+    _login_as(client, "admin", "SmartCampus@2026")
     tok = _csrf_from_session(client)
-    assert client.post("/api/schedule/run", headers={"X-CSRF-Token": tok}).status_code == 200
+    client.post(
+        "/api/chat",
+        json={"message": "我寝室插座坏了找谁？", "student_id": "20230001"},
+        headers={"X-CSRF-Token": tok},
+    )  # other -> 综合事务辅导员
+    tid = db.list_tickets(role="", who="")[0]["id"]
+    assert tid
+
+    # 综合事务辅导员（counselor 账号）可回复自己职责的工单
+    client.post("/logout")
+    _login_as(client, "counselor", "cou123")
+    tok2 = _csrf_from_session(client)
+    r = client.post(f"/api/tickets/{tid}/reply", json={"reply": "已联系后勤维修，今晚上门处理"},
+                    headers={"X-CSRF-Token": tok2})
+    assert r.status_code == 200
+    got = r.get_json()["ticket"]
+    assert got["reply"] == "已联系后勤维修，今晚上门处理"
+    assert got["status"] == "processing"
+
+    # 其他职责辅导员（学籍与请假业务辅导员）回复被拒
+    client.post("/logout")
+    _login_as(client, "c_leave", "cou123")
+    tok3 = _csrf_from_session(client)
+    r = client.post(f"/api/tickets/{tid}/reply", json={"reply": "x"},
+                    headers={"X-CSRF-Token": tok3})
+    assert r.status_code == 403
+
+
+def test_schedule_run_admin_only(client):
+    """排课求解仅管理员：辅导员/学生 403。"""
+    _login_as(client, "counselor", "cou123")
+    tok = _csrf_from_session(client)
+    assert client.post("/api/schedule/run", headers={"X-CSRF-Token": tok}).status_code == 403
+    client.post("/logout")
+    _login_as(client, "admin", "SmartCampus@2026")
+    tok2 = _csrf_from_session(client)
+    assert client.post("/api/schedule/run", headers={"X-CSRF-Token": tok2}).status_code == 200
 
 
 def test_counselor_sees_only_own_tickets(client):

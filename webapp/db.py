@@ -38,7 +38,9 @@ CREATE TABLE IF NOT EXISTS tickets (
     status TEXT DEFAULT 'pending',
     created_at TEXT DEFAULT (datetime('now', 'localtime')),
     resolution TEXT,
-    student_id TEXT
+    student_id TEXT,
+    reply TEXT,
+    replied_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS energy_alerts (
@@ -117,6 +119,12 @@ def get_conn():
 def init_db():
     conn = get_conn()
     conn.executescript(SCHEMA)
+    conn.commit()
+    # 老库迁移：补充新增列（旧库 tickets 表可能没有 reply / replied_at）
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(tickets)").fetchall()}
+    for col in ("reply", "replied_at"):
+        if col not in cols:
+            conn.execute(f"ALTER TABLE tickets ADD COLUMN {col} TEXT")
     conn.commit()
     # 幂等写入默认 RBAC 账户：upstart（INSERT OR REPLACE on username）
     # 既补入新增账号(如楼栋辅导员)，也把已存在账号的口令/角色收敛到 seed 值，
@@ -232,6 +240,37 @@ def list_tickets(status: str | None = None, role: str = "", who: str = "") -> li
     rows = conn.execute(sql, args).fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+
+def get_ticket(ticket_id: str) -> dict | None:
+    conn = get_conn()
+    row = conn.execute("SELECT * FROM tickets WHERE id=?", (ticket_id,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def reply_ticket(ticket_id: str, reply: str, handler: str = "", status: str = "processing") -> dict | None:
+    """辅导员回复工单：写入回复文本/时间，并将状态推进到 processing（已答复跟随处理）。
+    仅当工单流转对象（handler）与回复者身份一致时才允许更新（权限在路由层校验）。
+    返回更新后的工单 dict；未命中/已被结案则返回 None。
+    """
+    reply = (reply or "").strip()
+    if not reply:
+        return None
+    conn = get_conn()
+    rows = conn.execute(
+        """UPDATE tickets
+           SET reply=?, replied_at=datetime('now','localtime'), status=?, resolution=?
+           WHERE id=? AND status != 'resolved'""",
+        (reply, status, reply, ticket_id),
+    )
+    conn.commit()
+    if rows.rowcount == 0:
+        conn.close()
+        return None
+    row = conn.execute("SELECT * FROM tickets WHERE id=?", (ticket_id,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
 
 
 def list_energy_alerts(limit: int = 50) -> list:
