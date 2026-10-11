@@ -41,9 +41,9 @@ ROLES = {
 
 # 各角色可访问的页面
 ROLE_PAGES = {
-    "student": ["/ai"],                       # 学生：仅 AI 客服（不可见能耗/排课）
-    "counselor": ["/ai"],                     # 辅导员：AI 客服 + 对应工单的查看与回复（排课归管理员）
-    "admin": ["/ai", "/energy", "/scheduler"],# 管理人员：全部（含排课求解）
+    "student": ["/ai"],                                       # 学生：仅 AI 客服（不可见能耗/排课）
+    "counselor": ["/ai", "/energy", "/scheduler"],            # 辅导员：AI 客服 + 查看对应宿舍能耗与本人课程排课（只读，运行/求解归管理员）
+    "admin": ["/ai", "/energy", "/scheduler"],                # 管理人员：全部（含排课求解/能耗采集分析）
 }
 # 兼容引用（学生不再只读浏览能耗/排课，置空）
 READ_ONLY_PAGES_FOR_STUDENT = []
@@ -301,10 +301,17 @@ def ai_page():
 
 @app.route("/energy")
 def energy_page():
+    u = _current_user()
     alerts = db.list_energy_alerts()
     forecast = db.list_forecast()
     rooms = db.list_room_energy()
     notices = db.list_energy_notices()
+    # 辅导员：只看本人负责宿舍楼栋的能耗明细与告警（handler 匹配）
+    if u and u["role"] == "counselor" and u.get("handler"):
+        h = u["handler"]
+        rooms = [r for r in rooms if r["handler"] == h]
+        alerts = [a for a in alerts if a["room"] in {r["room"] for r in rooms}]
+        notices = [n for n in notices if n["handler"] == h]
     return render_template(
         "energy.html", alerts=alerts, forecast=forecast,
         rooms=rooms, notices=notices,
@@ -313,8 +320,11 @@ def energy_page():
 
 @app.route("/scheduler")
 def scheduler_page():
-    # 排课功能仅管理人员可用（页面级已在 _guard 限制 /scheduler 仅 admin）
+    u = _current_user()
     schedule = db.list_schedules()
+    # 辅导员（教师视角）：只看与本人职责（教师名）相关的课程
+    if u and u["role"] == "counselor" and u.get("handler"):
+        schedule = [s for s in schedule if s["teacher"] == u["handler"]]
     return render_template("scheduler.html", schedule=schedule)
 
 

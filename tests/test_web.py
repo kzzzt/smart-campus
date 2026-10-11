@@ -93,13 +93,37 @@ def test_student_can_chat_and_create_ticket(client):
 
 
 def test_counselor_only_ai_and_reply(client):
-    """辅导员：AI 客服 + 工单回复；排课（页/API）与能耗运行被拒（排课归管理员）。"""
+    """辅导员：AI 客服 + 工单回复；可只读查看能耗/排课页，但运行（写操作）被拒。"""
     _login_as(client, "counselor", "cou123")
     assert client.get("/ai").status_code == 200
-    assert client.get("/scheduler").status_code == 403
-    assert client.get("/energy").status_code == 403
+    assert client.get("/scheduler").status_code == 200
+    assert client.get("/energy").status_code == 200
     assert client.post("/api/schedule/run").status_code == 403
     assert client.post("/api/energy/run").status_code == 403
+
+
+def test_counselor_sees_only_own_energy_and_schedule(client):
+    """辅导员能耗/排课页面：只看到本人负责的宿舍楼栋与本人相关课程（数据范围隔离）。"""
+    # 先用 admin 生成一份能耗 + 排课数据
+    _login_as(client, "admin", "SmartCampus@2026")
+    etok = _csrf_from(client, "/energy")
+    client.post("/api/energy/run", headers={"X-CSRF-Token": etok})
+    stok = _csrf_from(client, "/scheduler")
+    client.post("/api/schedule/run", headers={"X-CSRF-Token": stok})
+    client.post("/logout")
+
+    # 1号楼生活辅导员：只看 1号宿舍楼 的宿舍
+    _login_as(client, "f1", "cou123")
+    html = client.get("/energy").get_data(as_text=True)
+    assert "1号宿舍楼-" in html
+    assert "2号宿舍楼-" not in html
+    # 辅导员看不到求解按钮（按钮带 runBtn id / onclick）
+    assert 'id="runBtn"' not in client.get("/scheduler").get_data(as_text=True)
+    # 排课页只显示本人课程（张老师 -> 数据结构）
+    _login_as(client, "t_zhang", "cou123")
+    sh = client.get("/scheduler").get_data(as_text=True)
+    assert "数据结构" in sh
+    assert "大学英语" not in sh
 
 
 def test_counselor_can_reply_own_ticket(client):

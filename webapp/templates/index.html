@@ -28,14 +28,14 @@
     {% if '/energy' in allowed_pages %}
     <div class="card" style="display:flex;flex-direction:column;margin-bottom:0;">
         <div style="font-size:14px;font-weight:600;margin-bottom:6px;">能耗与安全预警</div>
-        <p style="color:var(--text-2);font-size:13px;flex:1;">结合 IoT 功率与智算视觉双通道，识别宿舍违规电器、预测用电高峰，逐宿舍能耗监控。{% if current_user and current_user.role=='admin' %}可采集分析并向辅导员发出高能耗告警。{% endif %}</p>
+        <p style="color:var(--text-2);font-size:13px;flex:1;">结合 IoT 功率与智算视觉双通道，识别宿舍违规电器、预测用电高峰，逐宿舍能耗监控。{% if current_user and current_user.role=='admin' %}可采集分析并向辅导员发出高能耗告警。{% elif current_user and current_user.role=='counselor' %}可查看本人负责宿舍楼栋的能耗与告警（只读）。{% endif %}</p>
         <a class="btn" href="/energy" style="margin-top:16px;align-self:flex-start;">查看监控</a>
     </div>
     {% endif %}
     {% if '/scheduler' in allowed_pages %}
     <div class="card" style="display:flex;flex-direction:column;margin-bottom:0;">
         <div style="font-size:14px;font-weight:600;margin-bottom:6px;">智能排课与调度</div>
-        <p style="color:var(--text-2);font-size:13px;flex:1;">遗传算法 + 大模型约束理解，解决排课冲突，按课程类型智能分配最合适的教室。{% if current_user and current_user.role=='admin' %}（管理人员）{% endif %}</p>
+        <p style="color:var(--text-2);font-size:13px;flex:1;">遗传算法 + 大模型约束理解，解决排课冲突，按课程类型智能分配最合适的教室。{% if current_user and current_user.role=='admin' %}可运行求解并管理排课。{% elif current_user and current_user.role=='counselor' %}可查看本人授课课程排课（只读）。{% endif %}</p>
         <a class="btn" href="/scheduler" style="margin-top:16px;align-self:flex-start;">查看排课</a>
     </div>
     {% endif %}
