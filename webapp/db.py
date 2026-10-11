@@ -118,12 +118,13 @@ def init_db():
     conn = get_conn()
     conn.executescript(SCHEMA)
     conn.commit()
-    # 幂等写入默认 RBAC 账户：逐条 INSERT OR IGNORE，新增账号(如楼栋辅导员)
-    # 会自动补进已有的旧库（不再要求 users 表为空）
+    # 幂等写入默认 RBAC 账户：upstart（INSERT OR REPLACE on username）
+    # 既补入新增账号(如楼栋辅导员)，也把已存在账号的口令/角色收敛到 seed 值，
+    # 避免旧库残留旧演示口令（如 admin123）与文档不一致。
     from .seed_users import SEED_USERS
     for u in SEED_USERS:
         conn.execute(
-            """INSERT OR IGNORE INTO users
+            """INSERT OR REPLACE INTO users
                (username, password_hash, role, display_name, student_id, handler)
                VALUES (?,?,?,?,?,?)""",
             (u["username"], u["password_hash"], u["role"], u["display_name"],
