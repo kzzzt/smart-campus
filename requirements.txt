@@ -6,3 +6,9 @@ flask>=3.0
 
 # 单元测试
 pytest>=7.0
+
+# ---- 可选：真实视觉 / IoT 数据接入（未安装自动降级，不影响离线演示） ----
+# ultralytics>=8.0          # 视觉识别（YOLO）
+# opencv-python             # 摄像头/图片读取
+# paho-mqtt>=1.6            # MQTT 数据源订阅
+

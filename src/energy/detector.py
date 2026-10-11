@@ -120,16 +120,37 @@ def build_notices(rooms: list[dict]) -> list[dict]:
 
 def vision_detect(images: list[bytes] | None = None, candidate_rooms: list[dict] | None = None) -> dict:
     """
-    智算视觉模型检测入口（支持真模型替换）。
+    智算视觉模型检测入口（真实模型可插拔）。
 
-    真实实现：调用部署在智算节点的目标检测模型（如 YOLO 系列），对宿舍过道/公共区
-    摄像头画面识别电热毯、电煮锅、乱接插线板等违规物件。
+    真实部署：传入 images(摄像头帧/照片) 时，调用 src.energy.vision 的真实 YOLO 检测；
+    未安装 ultralytics 或无图像时，保持"模拟复核"降级路径（不破坏离线演示）。
 
-    演示实现（无真实图片时）：对规则通道命中的候选房间做"视觉复核"，模拟视觉证据
-    与功率证据互补 —— 命中房间视为画面中检出违规物件（真实部署中由视觉模型给出）。
-
-    返回 {"detected": bool, "objects": [...], "confidence": float}
+    返回 {"detected": bool, "objects": [...], "confidence": float, "mode": str}
     """
+    # 真实视觉路径：有图像且 Ultralytics 可用 -> 用真实模型检测
+    real = None
+    try:
+        if images:
+            from . import vision
+            if vision.is_available():
+                real = []
+                for img in images:
+                    dets = vision.detect_image(img)
+                    real.extend(
+                        {"label": d["label"], "risk": d["risk"], "confidence": d["confidence"]}
+                        for d in dets
+                    )
+    except Exception:
+        real = None
+    if real:
+        return {
+            "detected": True,
+            "objects": real[:5],
+            "confidence": round(max((o["confidence"] for o in real), default=0.0), 2),
+            "mode": "model",
+        }
+
+    # ---- 模拟降级路径（无真实图像/未装依赖时的复核占位） ----
     if not candidate_rooms:
         return {"detected": False, "objects": [], "confidence": 0.0, "mode": "none"}
 
