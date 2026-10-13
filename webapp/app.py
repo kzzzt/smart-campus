@@ -291,12 +291,42 @@ def ai_page():
         recent = [c for c in recent if c["student_id"] == sid]
     # 按角色过滤工单：student 只看自己，counselor 只看流转到自己的
     role, who = (u["role"], u["student_id"]) if u and u["role"] == "student" else ((u["role"], u["handler"]) if u and u["role"] == "counselor" else ("", ""))
-    tickets = db.list_tickets(role=role, who=who)
-    # 辅导员：在 AI 页同时展示流转到自己职责的能耗告警（学生/管理员不需要）
+
+    # 辅导员：工单处理中心 + 告警通知中心（支持状态桶筛选）
+    tbucket = nbucket = None
+    counts = energy_notice_counts = {}
     energy_notices = None
     if u and u["role"] == "counselor" and u.get("handler"):
-        energy_notices = [n for n in db.list_energy_notices() if n["handler"] == u["handler"]]
-    return render_template("ai.html", conversations=recent, tickets=tickets, energy_notices=energy_notices)
+        h = u["handler"]
+        all_mine = db.list_tickets(role="counselor", who=h)
+        counts = {
+            "open": len([t for t in all_mine if t["status"] != "resolved" and not (t.get("reply") or "").strip()]),
+            "replied": len([t for t in all_mine if t["status"] != "resolved" and (t.get("reply") or "").strip()]),
+            "resolved": len([t for t in all_mine if t["status"] == "resolved"]),
+        }
+        tbucket = request.args.get("tbucket") or "open"
+        # 告警：仅展示流转到本人职责的通知
+        all_notices = [n for n in db.list_energy_notices() if n["handler"] == h]
+        energy_notice_counts = {
+            "pending": len([n for n in all_notices if not n.get("acknowledged")]),
+            "handled": len([n for n in all_notices if n.get("acknowledged")]),
+        }
+        nbucket = request.args.get("nbucket") or "pending"
+        if nbucket == "handled":
+            energy_notices = [n for n in all_notices if n.get("acknowledged")]
+        elif nbucket == "all":
+            energy_notices = all_notices
+        else:
+            energy_notices = [n for n in all_notices if not n.get("acknowledged")]
+
+    tickets = db.list_tickets(role=role, who=who, bucket=tbucket)
+    return render_template(
+        "ai.html",
+        conversations=recent, tickets=tickets,
+        energy_notices=energy_notices,
+        tbucket=tbucket, nbucket=nbucket,
+        counts=counts, energy_notice_counts=energy_notice_counts,
+    )
 
 
 @app.route("/energy")
@@ -434,7 +464,9 @@ def api_schedule_run():
 def api_tickets():
     u = _current_user()
     role, who = (u["role"], u["student_id"]) if u and u["role"] == "student" else ((u["role"], u["handler"]) if u and u["role"] == "counselor" else ("", ""))
-    return jsonify(db.list_tickets(role=role, who=who))
+    # bucket 状态桶筛选：None/all=全部，open/replied/resolved（见 db.list_tickets）
+    bucket = request.args.get("bucket") or None
+    return jsonify(db.list_tickets(role=role, who=who, bucket=bucket))
 
 
 @app.route("/api/tickets/<tid>/resolve", methods=["POST"])
@@ -473,6 +505,16 @@ def api_reply(tid):
     if not updated:
         return jsonify({"error": "该工单已结案或不存在"}), 400
     return jsonify({"ok": True, "ticket": updated})
+
+
+@app.route("/api/notices/<int:nid>/handle", methods=["POST"])
+def api_notice_handle(nid):
+    """告警通知闭环：辅导员将流转到本人职责的通知标为已处理；管理员可标任意。"""
+    u = _current_user()
+    handler = (u.get("handler") or "") if u and u["role"] == "counselor" else ""
+    if not db.mark_notice_handled(nid, handler=handler):
+        return jsonify({"error": "告警不存在或无权处理"}), 404
+    return jsonify({"ok": True, "notice_id": nid})
 
 
 if __name__ == "__main__":

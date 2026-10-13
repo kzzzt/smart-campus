@@ -1,11 +1,128 @@
 {% extends "base.html" %}
 {% block title %}智能客服 - 智慧校园管理平台{% endblock %}
 {% block content %}
+
+{% if current_user and current_user.role == 'counselor' %}
+{################################ 辅导员工作台 ################################}
+<div class="page-head">
+    <h1>辅导员工作台</h1>
+    <p>集中处理流转到你职责的咨询工单，以及你负责楼栋的高能耗告警通知。</p>
+</div>
+<div style="display:grid;grid-template-columns:1.5fr 1fr;gap:20px;align-items:start;">
+    <!-- 左：工单处理中心 -->
+    <div>
+        <div class="card">
+            <div class="card-title">工单处理中心</div>
+            <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+                {% for k, label in [('open','待处理'),('replied','已答复'),('resolved','已结案'),('all','全部')] %}
+                <a href="/ai?tbucket={{ k }}" class="chips"
+                   style="{% if (tbucket or 'open') == k %}background:var(--primary);color:#fff;{% else %}background:#eef2f7;color:var(--text-2);{% endif %}">
+                    {{ label }}{% if k != 'all' %} <span style="opacity:.75">{{ counts.get(k, 0) }}</span>{% endif %}
+                </a>
+                {% endfor %}
+            </div>
+            <div id="tickets">
+                {% for t in tickets %}
+                <div style="border-left:3px solid var(--warning);background:#fffbeb;padding:10px 12px;border-radius:6px;font-size:13px;margin-bottom:10px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+                        <b style="color:#92400e;">{{ t.student_desc }}</b>
+                        {% if t.status == 'resolved' %}
+                        <span class="tag tag-green">已结案</span>
+                        {% elif (t.reply or '').strip() %}
+                        <span class="tag" style="background:#e0f2fe;color:#0369a1;">已答复</span>
+                        {% else %}
+                        <span class="tag tag-amber">待处理</span>
+                        {% endif %}
+                    </div>
+                    <div style="font-size:12px;color:var(--text-3);margin-top:4px;">{{ t.id }} · {{ t.created_at }}{% if t.student_id %} · 学号 {{ t.student_id }}{% endif %}</div>
+                    {% if (t.reply or '').strip() %}
+                    <div style="margin-top:6px;padding:8px 10px;background:#eff6ff;border-radius:6px;color:#1e40af;">
+                        <b style="font-size:12px;">我的回复（{{ t.replied_at }}）：</b><br>{{ t.reply }}
+                    </div>
+                    {% endif %}
+                    {% if t.status != 'resolved' %}
+                    <div style="margin-top:8px;display:flex;gap:8px;">
+                        <input type="text" id="reply-{{ t.id }}" value="{{ t.reply or '' }}"
+                               placeholder="{{ '修改处理意见…' if (t.reply or '').strip() else '填写处理意见后提交回复…' }}"
+                               style="flex:1;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;outline:none;">
+                        <button class="btn" style="padding:8px 14px;font-size:13px;" onclick="workbenchReply('{{ t.id }}')">回复</button>
+                    </div>
+                    {% else %}
+                    <div style="margin-top:6px;padding:8px 10px;background:#f0fdf4;border-radius:6px;color:#166534;">✅ 已结案说明：{{ t.resolution or '已处理' }}</div>
+                    {% endif %}
+                </div>
+                {% else %}
+                <p style="color:var(--text-3);font-size:13px;">该分类下暂无工单。</p>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <!-- 右：告警通知中心 + 最近咨询记录 -->
+    <div>
+        <div class="card">
+            <div class="card-title">告警通知中心</div>
+            <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+                {% for k, label in [('pending','待处理'),('handled','已处理'),('all','全部')] %}
+                <a href="/ai?nbucket={{ k }}" class="chips"
+                   style="{% if (nbucket or 'pending') == k %}background:var(--primary);color:#fff;{% else %}background:#eef2f7;color:var(--text-2);{% endif %}">
+                    {{ label }} <span style="opacity:.75">{{ energy_notice_counts.get(k, 0) }}</span>
+                </a>
+                {% endfor %}
+            </div>
+            <div id="enotices">
+                {% for n in energy_notices %}
+                <div style="border-left:3px solid {{ '#dc2626' if not n.acknowledged else '#16a34a' }};background:{{ '#fef2f2' if not n.acknowledged else '#f0fdf4' }};padding:10px 12px;border-radius:6px;font-size:13px;margin-bottom:10px;{{ 'opacity:.72' if n.acknowledged }}">
+                    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+                        <div>
+                            <b style="color:#b91c1c;">{{ n.room }}</b>
+                            {% if n.acknowledged %}
+                            <span class="tag tag-green">已处理</span>
+                            {% else %}
+                            <span class="tag tag-amber">高能耗</span>
+                            {% endif %}
+                        </div>
+                        {% if not n.acknowledged %}
+                        <button class="btn" style="padding:5px 12px;font-size:12px;" onclick="handleNotice({{ n.id }})">标记已处理</button>
+                        {% endif %}
+                    </div>
+                    <div style="margin-top:4px;color:var(--text);">{{ n.message }}</div>
+                    <div style="font-size:12px;color:var(--text-3);margin-top:4px;">{{ n.created_at }}</div>
+                </div>
+                {% else %}
+                <p style="color:var(--text-3);font-size:13px;">该分类下暂无告警通知。</p>
+                {% endfor %}
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-title">最近咨询记录</div>
+            <div class="table-wrap">
+                <table>
+                    <thead><tr><th>学生</th><th>意图</th><th>类型</th><th>时间</th></tr></thead>
+                    <tbody>
+                        {% for c in conversations %}
+                        <tr>
+                            <td>{{ c.student_id }}</td>
+                            <td>{{ c.intent }}</td>
+                            <td><span class="tag {{ 'tag-green' if c.needs_human==0 else 'tag-amber' }}">{{ '自动应答' if c.needs_human==0 else '转工单' }}</span></td>
+                            <td style="color:var(--text-3);white-space:nowrap;">{{ c.created_at }}</td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="4" class="empty">暂无咨询记录</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% else %}
+{############################ 学生 / 管理：在线咨询 ############################}
 <div class="page-head">
     <h1>AI 智能客服</h1>
     <p>解答请假、奖学金评定、学籍异动等问题；AI 无法处理的复杂情况将自动生成工单流转给对应辅导员。</p>
 </div>
-
 <div style="display:grid;grid-template-columns:1.5fr 1fr;gap:20px;align-items:start;">
     <!-- 左：对话区 -->
     <div class="card" style="margin-bottom:0;">
@@ -88,13 +205,17 @@
         </div>
     </div>
 </div>
+{% endif %}
 {% endblock %}
+
 {% block scripts %}
 <style>
     .msg.user { background:var(--primary); color:#fff; margin-left:auto; }
     .msg { max-width:85%; padding:10px 14px; border-radius:10px; line-height:1.6; font-size:14px; margin-bottom:12px; }
     .msg.bot { background:#fff; border:1px solid var(--border); }
     .meta { font-size:12px; color:var(--text-2); margin-bottom:4px; }
+    .chips { padding:6px 14px; font-size:13px; border-radius:16px; text-decoration:none; font-weight:500; }
+    .chips:hover { filter:brightness(.96); }
 </style>
 <script>
     // 转义 HTML，防止自/存储 XSS
@@ -131,7 +252,7 @@
         box.scrollTop = box.scrollHeight;
         refreshSidebar();
     }
-    // 辅导员回复工单
+    // 普通视图：回复工单（学生/管理员侧的分支保留）
     async function replyTicket(tid) {
         const input = document.getElementById('reply-' + tid);
         const reply = input ? input.value.trim() : '';
@@ -147,6 +268,34 @@
             input.value = '';
             refreshSidebar();
         } catch(e) { alert('回复失败：' + e.message); }
+    }
+    // 工作台视图：回复工单后刷新（状态桶随之更新）
+    async function workbenchReply(tid) {
+        const input = document.getElementById('reply-' + tid);
+        const reply = input ? input.value.trim() : '';
+        if (!reply) { alert('请先填写回复内容'); return; }
+        try {
+            const r = await fetch('/api/tickets/' + tid + '/reply', {
+                method: 'POST',
+                headers: {'Content-Type':'application/json', 'X-CSRF-Token':'{{ csrf_token }}'},
+                body: JSON.stringify({reply: reply})
+            });
+            const data = await r.json();
+            if (!r.ok) { alert(data.error || '回复失败'); return; }
+            location.reload();
+        } catch(e) { alert('回复失败：' + e.message); }
+    }
+    // 工作台视图：告警通知标记已处理（闭环）
+    async function handleNotice(nid) {
+        try {
+            const r = await fetch('/api/notices/' + nid + '/handle', {
+                method: 'POST',
+                headers: {'X-CSRF-Token':'{{ csrf_token }}'}
+            });
+            const data = await r.json();
+            if (!r.ok) { alert(data.error || '操作失败'); return; }
+            location.reload();
+        } catch(e) { alert('操作失败：' + e.message); }
     }
     // 只刷新右侧"工单流转/最近咨询记录"面板，保留对话记录
     async function refreshSidebar() {

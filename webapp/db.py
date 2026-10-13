@@ -84,6 +84,7 @@ CREATE TABLE IF NOT EXISTS energy_notices (
     power_w REAL,
     level TEXT,                -- high / warning
     message TEXT,
+    acknowledged INTEGER DEFAULT 0,  -- 辅导员是否已标记处理
     created_at TEXT DEFAULT (datetime('now', 'localtime'))
 );
 
@@ -125,6 +126,10 @@ def init_db():
     for col in ("reply", "replied_at"):
         if col not in cols:
             conn.execute(f"ALTER TABLE tickets ADD COLUMN {col} TEXT")
+    # 老库迁移：告警通知表缺少 acknowledged（辅导员"标记已处理"闭环）
+    ncols = {r[1] for r in conn.execute("PRAGMA table_info(energy_notices)").fetchall()}
+    if "acknowledged" not in ncols:
+        conn.execute("ALTER TABLE energy_notices ADD COLUMN acknowledged INTEGER DEFAULT 0")
     conn.commit()
     # 幂等写入默认 RBAC 账户：upstart（INSERT OR REPLACE on username）
     # 既补入新增账号(如楼栋辅导员)，也把已存在账号的口令/角色收敛到 seed 值，
@@ -222,13 +227,26 @@ def recent_conversations(limit: int = 50) -> list:
     return [dict(r) for r in rows]
 
 
-def list_tickets(status: str | None = None, role: str = "", who: str = "") -> list:
+def list_tickets(status: str | None = None, role: str = "", who: str = "",
+                 bucket: str | None = None) -> list:
+    """工单列表（支持工单状态桶过滤）。
+
+    bucket: None=全部；'open'=待处理(未结案且无回复)；'replied'=已答复(未结案已有回复)；
+            'resolved'=已结案。
+    """
     conn = get_conn()
     sql = "SELECT * FROM tickets WHERE 1=1"
     args = []
     if status:
         sql += " AND status=?"
         args.append(status)
+    # 按工单处理状态桶过滤
+    if bucket == "open":
+        sql += " AND status != 'resolved' AND (reply IS NULL OR TRIM(reply)='')"
+    elif bucket == "replied":
+        sql += " AND status != 'resolved' AND reply IS NOT NULL AND TRIM(reply)!=''"
+    elif bucket == "resolved":
+        sql += " AND status='resolved'"
     # 数据范围：student 只看自己，counselor 只看 callback 到自己职责的工单
     if role == "student" and who:
         sql += " AND student_id=?"
@@ -372,6 +390,28 @@ def save_energy_notice(notices: list) -> None:
         )
     conn.commit()
     conn.close()
+
+
+def mark_notice_handled(notice_id: int, handler: str = "") -> bool:
+    """辅导员将告警通知标记为已处理（闭环）。
+
+    handler 为空（管理员）可标记任意通知；辅导员只能标记流转到自己职责的。
+    返回是否更新到记录（False=不存在或无权）。
+    """
+    conn = get_conn()
+    if handler:
+        cur = conn.execute(
+            "UPDATE energy_notices SET acknowledged=1 WHERE id=? AND handler=?",
+            (notice_id, handler),
+        )
+    else:
+        cur = conn.execute(
+            "UPDATE energy_notices SET acknowledged=1 WHERE id=?",
+            (notice_id,),
+        )
+    conn.commit()
+    conn.close()
+    return cur.rowcount > 0
 
 
 def list_room_energy(limit: int = 100) -> list:
