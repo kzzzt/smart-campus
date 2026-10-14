@@ -4,6 +4,9 @@ openai>=1.0
 # Web 演示界面
 flask>=3.0
 
+# 云部署生产 WSGI 服务器（Gunicorn，Linux 环境使用；本地演示可不装）
+gunicorn>=20.0
+
 # 单元测试
 pytest>=7.0
 
