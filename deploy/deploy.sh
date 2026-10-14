@@ -95,6 +95,27 @@ ${VENV_DIR}/bin/python -c "from webapp import db; db.init_db(); print('数据库
 
 # ---------- 4. Gunicorn + systemd ----------
 echo "[4/6] 配置 Gunicorn 与 systemd 服务..."
+
+# 确保 deploy/.env 存在（systemd EnvironmentFile 指向不存在文件会导致启动失败）
+ENV_FILE="${APP_DIR}/deploy/.env"
+if [ ! -f "${ENV_FILE}" ]; then
+    echo "    生成 deploy/.env（从 .env.example + 随机 SECRET_KEY）..."
+    if [ -f "${APP_DIR}/deploy/.env.example" ]; then
+        cp "${APP_DIR}/deploy/.env.example" "${ENV_FILE}"
+    else
+        echo "# Smart Campus env" > "${ENV_FILE}"
+        echo "TZ=Asia/Shanghai" >> "${ENV_FILE}"
+    fi
+    # 生成随机 SECRET_KEY 并写入（若尚未设置有效值）
+    if ! grep -q "^SECRET_KEY=.\+" "${ENV_FILE}" || grep -q "SECRET_KEY=please-change-me" "${ENV_FILE}"; then
+        # 去掉已有 SECRET_KEY 行，追加随机键
+        SECRET="$(openssl rand -hex 32 2>/dev/null || python3 -c "import secrets;print(secrets.token_hex(32))")"
+        sed -i '/^SECRET_KEY=/d' "${ENV_FILE}"
+        echo "SECRET_KEY=${SECRET}" >> "${ENV_FILE}"
+    fi
+    chmod 600 "${ENV_FILE}"
+fi
+
 SVC_FILE="/etc/systemd/system/${APP_NAME}.service"
 cat > "${SVC_FILE}" <<EOF
 [Unit]
@@ -104,7 +125,7 @@ After=network.target
 [Service]
 User=root
 WorkingDirectory=${APP_DIR}
-EnvironmentFile=${APP_DIR}/deploy/.env
+EnvironmentFile=${ENV_FILE}
 ExecStart=${VENV_DIR}/bin/gunicorn -c ${APP_DIR}/deploy/gunicorn.conf.py 'webapp.app:app'
 Restart=always
 RestartSec=5
