@@ -1,11 +1,12 @@
 """
-Gunicorn 生产配置 —— 匹配 4 vCPU / 16 GB 云主机（c5.xlarge.4）。
+Gunicorn 生产配置 —— 自动适配云主机 CPU 核数（1核~多核均可）。
 
 启动方式（deploy.sh 中使用）：
     gunicorn -c deploy/gunicorn.conf.py 'webapp.app:app'
 
 要点：
-  - worker 数 = 2×CPU + 1 ≈ 9，但本项目为轻量同步型，4 worker 已足够并发，留足余量；
+  - worker 数按 CPU 核数自动计算并封顶 4（轻量应用足够，避免小机器内存吃紧）；
+  - 2 核 4G 机器 → 2 workers；4 核 16G → 4 workers；1 核 → 1 worker；
   - worker_class 默认 sync（简单可靠，本应用无长连接/SSE 需求）；
   - graceful 重启，避免服务中断。
 """
@@ -16,10 +17,11 @@ import os
 # 绑定 Gunicorn 到本机回环，由 Nginx 反向代理对外
 bind = "127.0.0.1:8000"
 
-# worker 数：按 CPU 核数自适应，最多 4 个（轻量应用足够）
-workers = min(4, max(1, multiprocessing.cpu_count()))
-# 每 worker 线程数（同步型进程内多线程处理轻量 IO）
-threads = 2
+# worker 数：按 CPU 核数自适应，封顶 4（每 worker 常驻内存 ~30-40MB，小机器也可跑）
+_cpu = multiprocessing.cpu_count()
+workers = min(4, max(1, _cpu))
+# 每 worker 线程数（同步型进程内多线程处理轻量 IO）；1核小机器用少线程防争抢
+threads = 1 if _cpu <= 2 else 2
 
 # 超时与连接
 timeout = 30               # worker 沉默超时（秒），GA 求解毫秒级足够

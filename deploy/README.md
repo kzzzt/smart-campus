@@ -1,7 +1,7 @@
 # 智慧校园管理平台 · 云端部署说明
 #
-# 适用：Ubuntu 22.04/24.04 或 Debian 11/12（apt 系），x86_64 云主机
-# 推荐配置：1核1G 即可跑通；制作者实测在 4vCPU/16GB 云主机上运行无压力（本部署脚本按 4 核优化 worker 数）
+# 适用：Ubuntu / Debian（apt 系）、CentOS / RHEL / BC-Linux(麒麟) / openEuler（yum/dnf 系），x86_64 云主机
+# 推荐配置：1核1G 即可跑通；实测 2 核 4G / 4 核 16GB 云主机运行无压力（部署脚本按 CPU 核数自适应 worker 数）
 #
 # ---------------------------------------------------------------------------
 # 一、把代码放到云主机
@@ -20,13 +20,14 @@
 #     cd smart-campus
 #     sudo bash deploy/deploy.sh
 #
-# 脚本会自动：
-#   1) apt 安装 python3-venv / python3-pip / nginx / build-essential
+# 脚本会自动（自动检测 apt / yum / dnf）：
+#   1) 安装 python3 / python3-venv / python3-pip / nginx / gcc 等系统依赖
 #   2) 创建 .venv 虚拟环境并 pip install -r requirements.txt
 #   3) 初始化 SQLite 数据库 webapp/campus.db（自动建表+种子演示账号）
-#   4) 配置 Gunicorn（4 worker，见 gunicorn.conf.py）+
+#   4) 配置 Gunicorn（worker 数按 CPU 自适应，见 gunicorn.conf.py）+
 #      systemd 服务（开机自启、崩溃 5 秒自动重启）
-#   5) 配置 Nginx 反向代理（80 端口 -> 127.0.0.1:8000）
+#   5) 配置 Nginx 反向代理（80 端口 -> 127.0.0.1:8000），兼容
+#      sites-available / conf.d 两种 nginx 布局
 #
 # 部署完成后访问 http://<云主机公网IP>/  即可。
 #
@@ -47,8 +48,12 @@
 #        sudo apt install -y certbot python3-certbot-nginx
 #        sudo certbot --nginx -d 你的域名
 #
-# 4) 防火墙放行 80/443（若云安全组在控制台配置）：
-#        sudo ufw allow http; sudo ufw allow https; sudo ufw enable
+# 4) 防火墙放行 80/443：
+#    - Ubuntu/Debian: sudo ufw allow http; sudo ufw allow https; sudo ufw enable
+#    - BC-Linux/CentOS/RHEL: sudo firewall-cmd --add-port=80/tcp --permanent
+#                             sudo firewall-cmd --add-port=443/tcp --permanent
+#                             sudo firewall-cmd --reload
+#    （注意：云平台还有一层"安全组/暴露面管控"，需在控制台同时放行）
 #
 # ---------------------------------------------------------------------------
 # 四、运维常用命令
@@ -78,3 +83,7 @@
 #   生产务必设置 .env，保证稳定。
 # - 内网/公网地址：192.168.0.64 是内网地址，云主机需配置相应安全组/公网IP
 #   才能从外网访问。
+# - 移动云"暴露面管控"：22/80/443 等端口默认不对公网开放（无论安全组如何配置），
+#   需在控制台安全组放行，或走 OA 工单审批。若无法放行 80，可临时用高可用端口
+#   （如 8080）或依赖 Workbench 网页终端管理。本系统默认 Gunicorn 监听 127.0.0.1:8000
+#   仅本机回环，公有云暴露面不影响内网/Workbench 访问。
