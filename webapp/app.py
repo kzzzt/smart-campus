@@ -9,6 +9,8 @@ Web 应用 —— 智慧校园管理与安全平台（可交互版）。
 
 启动：python webapp/app.py   ->   http://127.0.0.1:5000
 """
+from __future__ import annotations
+
 
 import sys
 import os

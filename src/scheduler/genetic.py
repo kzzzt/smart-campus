@@ -13,6 +13,8 @@
       教室容量不足、机房需求不满足 -> 大额罚分
     - 软约束：教室类型匹配、容量匹配 -> 奖励
 """
+from __future__ import annotations
+
 
 import random
 from typing import Optional

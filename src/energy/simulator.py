@@ -8,6 +8,8 @@ IoT 数据模拟器。
 宿舍维度：精确到每一间宿舍（楼栋-楼层-房间号），并关联负责该宿舍的辅导员，
 用于"高能耗先通知对应辅导员"的告警闭环。
 """
+from __future__ import annotations
+
 
 import math
 import random

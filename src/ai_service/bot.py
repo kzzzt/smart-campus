@@ -7,6 +7,8 @@ AI 教务智能客服主逻辑（bot）。
     3. 若需人工 -> 自动生成工单并流转给对应辅导员
     4. 返回给学生结构化回复
 """
+from __future__ import annotations
+
 
 from .intent import understand
 from .llm import chat

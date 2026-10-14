@@ -9,6 +9,8 @@
     - 实验课 -> 优先实验室
     - 大课 -> 优先大容量教室
 """
+from __future__ import annotations
+
 
 from .constraints import Course, Room
 

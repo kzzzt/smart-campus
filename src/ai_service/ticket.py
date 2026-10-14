@@ -3,6 +3,8 @@
 
 核心闭环：AI 无法处理的复杂情况 -> 自动生成工单 -> 按类型流转给对应辅导员。
 """
+from __future__ import annotations
+
 
 import uuid
 from dataclasses import dataclass, field

@@ -12,6 +12,8 @@ AI 教务智能客服 —— 大模型统调用统一入口。
     LLM_BASE_URL   可选，默认 https://api.openai.com/v1（国内兼容网关可换）
     LLM_MODEL      可选，默认 gpt-4o-mini
 """
+from __future__ import annotations
+
 
 import os
 

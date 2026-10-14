@@ -8,6 +8,8 @@ SQLite 数据库访问层。
 
 使用 Python 内置 sqlite3，无需额外依赖，便于部署与演示。
 """
+from __future__ import annotations
+
 
 import os
 import sqlite3

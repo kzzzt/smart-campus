@@ -11,6 +11,8 @@
 用法示例：
     python -m src.energy.vision 图片.jpg [图片2.jpg ...]
 """
+from __future__ import annotations
+
 import os
 import sys
 

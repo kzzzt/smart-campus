@@ -7,6 +7,8 @@
 
 返回预测出的"高峰时段"列表与预测功率序列，供运行管理侧做削峰调度提示。
 """
+from __future__ import annotations
+
 
 from datetime import datetime, timedelta
 

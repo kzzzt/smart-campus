@@ -15,6 +15,8 @@
 用法示例：
     python -m src.energy.datasource sample.csv
 """
+from __future__ import annotations
+
 import csv
 import os.path
 import sys

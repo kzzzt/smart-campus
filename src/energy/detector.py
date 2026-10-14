@@ -7,6 +7,8 @@
 
 双重判定可有效降低单通道误报。
 """
+from __future__ import annotations
+
 
 # 违规电器典型功率阈值（W）
 ILLEGAL_POWER_THRESHOLD_W = 1000.0
