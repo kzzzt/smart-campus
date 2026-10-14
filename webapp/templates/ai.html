@@ -3,12 +3,13 @@
 {% block content %}
 
 {% if current_user and current_user.role == 'counselor' %}
-{################################ 辅导员工作台 ################################}
+{#################### 辅导员工作台（业务岗）/ 楼栋辅导员告警通知（building） ####################}
 <div class="page-head">
-    <h1>辅导员工作台</h1>
-    <p>集中处理流转到你职责的咨询工单，以及你负责楼栋的高能耗告警通知。</p>
+    <h1>{% if counselor_view == 'building' %}宿舍告警通知{% else %}辅导员工作台{% endif %}</h1>
+    <p>{% if counselor_view == 'building' %}接收并处理你所管楼栋的高能耗告警；宿舍能耗明细可在「所管宿舍能耗」中查看。{% else %}集中处理流转到你职责的咨询工单，以及你负责楼栋的高能耗告警通知。{% endif %}</p>
 </div>
-<div style="display:grid;grid-template-columns:1.5fr 1fr;gap:20px;align-items:start;">
+<div style="display:grid;grid-template-columns:{{ '1fr' if counselor_view == 'building' else '1.5fr 1fr' }};gap:20px;align-items:start;">
+    {% if counselor_view != 'building' %}
     <!-- 左：工单处理中心 -->
     <div>
         <div class="card">
@@ -57,8 +58,9 @@
             </div>
         </div>
     </div>
+    {% endif %}
 
-    <!-- 右：告警通知中心 + 最近咨询记录 -->
+    <!-- 右栏：告警通知中心（楼栋辅导员视角仅此卡片） -->
     <div>
         <div class="card">
             <div class="card-title">告警通知中心</div>
@@ -94,6 +96,7 @@
                 {% endfor %}
             </div>
         </div>
+        {% if counselor_view != 'building' %}
         <div class="card">
             <div class="card-title">最近咨询记录</div>
             <div class="table-wrap">
@@ -114,6 +117,7 @@
                 </table>
             </div>
         </div>
+        {% endif %}
     </div>
 </div>
 
@@ -170,7 +174,7 @@
                     {% endif %}
                     {% if t.status != 'resolved' and current_user and current_user.role in ('student','admin') %}
                     <div style="margin-top:8px;display:flex;gap:8px;align-items:center;">
-                        <button class="btn" style="padding:8px 14px;font-size:13px;background:#16a34a;" onclick="resolveTicket('{{ t.id }}')">我的问题已解决（结单）</button>
+                        <button class="btn" id="resolve-btn-{{ t.id }}" style="padding:8px 14px;font-size:13px;background:#16a34a;" onclick="resolveTicket('{{ t.id }}')">我的问题已解决（结单）</button>
                         <span style="font-size:12px;color:var(--text-3);">确认辅导员已处理完毕，可结单。</span>
                     </div>
                     {% endif %}
@@ -236,6 +240,21 @@
             .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     }
+    // 页内浮层提示（替代原生 alert，在沙箱/预览环境下同样可用）
+    function toast(msg, ok) {
+        let t = document.getElementById('app-toast');
+        if (!t) {
+            t = document.createElement('div');
+            t.id = 'app-toast';
+            t.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:9999;max-width:320px;padding:10px 16px;border-radius:8px;font-size:13px;color:#fff;box-shadow:0 6px 18px rgba(16,24,40,.18);transition:opacity .25s;opacity:0;pointer-events:none;';
+            document.body.appendChild(t);
+        }
+        t.textContent = msg;
+        t.style.background = ok ? '#16a34a' : '#dc2626';
+        t.style.opacity = '1';
+        clearTimeout(t._hide);
+        t._hide = setTimeout(function () { t.style.opacity = '0'; }, 2800);
+    }
     async function send() {
         const msg = document.getElementById('msg').value.trim();
         if (!msg) return;
@@ -268,7 +287,7 @@
     async function replyTicket(tid) {
         const input = document.getElementById('reply-' + tid);
         const reply = input ? input.value.trim() : '';
-        if (!reply) { alert('请先填写回复内容'); return; }
+        if (!reply) { toast('请先填写回复内容', false); return; }
         try {
             const r = await fetch('/api/tickets/' + tid + '/reply', {
                 method: 'POST',
@@ -276,16 +295,17 @@
                 body: JSON.stringify({reply: reply})
             });
             const data = await r.json();
-            if (!r.ok) { alert(data.error || '回复失败'); return; }
+            if (!r.ok) { toast(data.error || '回复失败', false); return; }
             input.value = '';
+            toast('回复已提交', true);
             refreshSidebar();
-        } catch(e) { alert('回复失败：' + e.message); }
+        } catch(e) { toast('回复失败：' + e.message, false); }
     }
     // 工作台视图：回复工单后刷新（状态桶随之更新）
     async function workbenchReply(tid) {
         const input = document.getElementById('reply-' + tid);
         const reply = input ? input.value.trim() : '';
-        if (!reply) { alert('请先填写回复内容'); return; }
+        if (!reply) { toast('请先填写回复内容', false); return; }
         try {
             const r = await fetch('/api/tickets/' + tid + '/reply', {
                 method: 'POST',
@@ -293,13 +313,34 @@
                 body: JSON.stringify({reply: reply})
             });
             const data = await r.json();
-            if (!r.ok) { alert(data.error || '回复失败'); return; }
+            if (!r.ok) { toast(data.error || '回复失败', false); return; }
             location.reload();
-        } catch(e) { alert('回复失败：' + e.message); }
+        } catch(e) { toast('回复失败：' + e.message, false); }
     }
-    // 学生/管理员：将工单结案（确认问题已解决）
+    // 学生/管理员：将工单结案——页内两段确认（不依赖原生 confirm，预览环境可用）
     async function resolveTicket(tid) {
-        if (!confirm('确认该工单已处理完毕、可以结单吗？')) return;
+        const btn = document.getElementById('resolve-btn-' + tid);
+        if (!btn) return;
+        if (btn.dataset.confirm !== '1') {
+            // 第一段：变为"再次点击确认结单"，4 秒无动作自动还原
+            btn.dataset.confirm = '1';
+            btn.dataset.label = btn.textContent;
+            btn.dataset.bg = btn.style.background;
+            btn.textContent = '再次点击确认结单';
+            btn.style.background = '#b45309';
+            clearTimeout(btn._reset);
+            btn._reset = setTimeout(function () {
+                if (btn.dataset.confirm === '1') {
+                    btn.dataset.confirm = '';
+                    btn.textContent = btn.dataset.label;
+                    btn.style.background = btn.dataset.bg;
+                }
+            }, 4000);
+            return;
+        }
+        btn.dataset.confirm = '';
+        btn.disabled = true;
+        btn.textContent = '结单中...';
         try {
             const r = await fetch('/api/tickets/' + tid + '/resolve', {
                 method: 'POST',
@@ -307,9 +348,17 @@
                 body: JSON.stringify({resolution: '学生问题已解决，工单结单'})
             });
             const data = await r.json();
-            if (!r.ok) { alert(data.error || '结单失败'); return; }
+            if (!r.ok) {
+                toast(data.error || '结单失败', false);
+                btn.disabled = false; btn.textContent = btn.dataset.label; btn.style.background = btn.dataset.bg;
+                return;
+            }
+            toast('工单已结单，感谢确认', true);
             refreshSidebar();
-        } catch(e) { alert('结单失败：' + e.message); }
+        } catch(e) {
+            toast('结单失败：' + e.message, false);
+            btn.disabled = false; btn.textContent = btn.dataset.label; btn.style.background = btn.dataset.bg;
+        }
     }
     // 工作台视图：告警通知标记已处理（闭环）
     async function handleNotice(nid) {
@@ -319,11 +368,11 @@
                 headers: {'X-CSRF-Token':'{{ csrf_token }}'}
             });
             const data = await r.json();
-            if (!r.ok) { alert(data.error || '操作失败'); return; }
+            if (!r.ok) { toast(data.error || '操作失败', false); return; }
             location.reload();
-        } catch(e) { alert('操作失败：' + e.message); }
+        } catch(e) { toast('操作失败：' + e.message, false); }
     }
-    // 只刷新右侧"工单流转/最近咨询记录"面板，保留对话记录
+    // 只刷新右侧侧栏面板（工单区与记录表），保留对话记录
     async function refreshSidebar() {
         try {
             const r = await fetch('/ai', {headers:{'X-CSRF-Token':'{{ csrf_token }}'}});

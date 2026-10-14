@@ -59,6 +59,34 @@ NAV_LABELS = {
 BUILDING_HANDLERS = set(HANDLER_BY_BUILDING.values())
 # 排课演示课程的授课教师名单（用于识别"教师视角"辅导员，避免尚无排课数据时误判为无职责）
 DEMO_TEACHERS = ("张老师", "李老师", "王老师", "赵老师", "孙老师", "周老师")
+
+
+# 辅导员细分视角（按职责名区分，决定可见页面与内容，互不越界）：
+#   teacher  - 教师（handler 为授课教师名）：仅"我的课表"
+#   building - 楼栋生活辅导员（handler 为楼栋负责人）：仅"告警通知" + "所管宿舍能耗"
+#   office   - 业务/综合辅导员：辅导员工作台（工单+通知），能耗/排课为只读总览
+def _counselor_view(u: dict | None) -> str:
+    h = (u.get("handler") or "") if u else ""
+    if h in DEMO_TEACHERS:
+        return "teacher"
+    if h in BUILDING_HANDLERS:
+        return "building"
+    return "office"
+
+
+def _role_pages(u: dict | None) -> list:
+    """当前用户可访问的页面列表（辅导员按细分视角收敛，避免看到无关内容）。"""
+    if not u:
+        return []
+    role = u.get("role")
+    if role != "counselor":
+        return ROLE_PAGES.get(role, [])
+    view = _counselor_view(u)
+    if view == "teacher":
+        return ["/scheduler"]          # 教师：只见本人课表
+    if view == "building":
+        return ["/ai", "/energy"]      # 楼栋辅导员：只见告警通知与所管宿舍能耗
+    return ROLE_PAGES.get("counselor", [])
 # 兼容引用（学生不再只读浏览能耗/排课，置空）
 READ_ONLY_PAGES_FOR_STUDENT = []
 # 默认演示账户（不覆盖时用）——首启初始化到 users 表
@@ -207,9 +235,9 @@ def api_me():
     })
 
 
-def _page_allowed(path: str, role: str) -> bool:
-    """页面是否对某角色开放（学生仅 AI 客服）。"""
-    return path in ROLE_PAGES.get(role, [])
+def _page_allowed(path: str, u: dict | None) -> bool:
+    """页面是否对当前用户开放（学生仅 AI 客服；辅导员按细分视角收敛）。"""
+    return path in _role_pages(u)
 
 
 @app.before_request
@@ -234,7 +262,7 @@ def _guard():
 
     # ============ 页面访问控制 ============
     if is_page:
-        if not _page_allowed(path, role):
+        if not _page_allowed(path, _current_user()):
             return render_template("forbidden.html", role_label=ROLES.get(role, role)), 403
         return
 
@@ -279,16 +307,22 @@ def _guard():
 def _inject_globals():
     u = _current_user()
     role = u["role"] if u else None
-    allowed = set(ROLE_PAGES.get(role, [])) if role else set()
+    cview = _counselor_view(u) if (u and role == "counselor") else None
+    allowed = set(_role_pages(u))
+    # 导航标签：角色默认 + 辅导员细分视角覆盖（楼栋辅导员 = 告警通知/所管宿舍能耗）
+    nav = dict(NAV_LABELS.get(role, {}))
+    if cview == "building":
+        nav.update({"/ai": "告警通知", "/energy": "所管宿舍能耗"})
     return {
         "csrf_token": _csrf_token(),
         "is_logged_in": _is_logged_in(),
         "current_user": u,
+        "counselor_view": cview,
         "allowed_pages": sorted(allowed, key=lambda p: ["/ai", "/energy", "/scheduler"].index(p)) if allowed else [],
         "ROLES": ROLES,
         "ROLE_PAGES": ROLE_PAGES,
         "NAV_LABELS": NAV_LABELS,
-        "nav_labels": NAV_LABELS.get(role, {}),
+        "nav_labels": nav,
         "READ_ONLY_PAGES_FOR_STUDENT": READ_ONLY_PAGES_FOR_STUDENT,
     }
 

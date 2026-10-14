@@ -112,18 +112,18 @@ def test_counselor_sees_only_own_energy_and_schedule(client):
     client.post("/api/schedule/run", headers={"X-CSRF-Token": stok})
     client.post("/logout")
 
-    # 1号楼生活辅导员：只看 1号宿舍楼 的宿舍
+    # 1号楼生活辅导员：只看 1号宿舍楼 的宿舍；排课页无权限（仅教师视角可见）
     _login_as(client, "f1", "cou123")
     html = client.get("/energy").get_data(as_text=True)
     assert "1号宿舍楼-" in html
     assert "2号宿舍楼-" not in html
-    # 辅导员看不到求解按钮（按钮带 runBtn id / onclick）
-    assert 'id="runBtn"' not in client.get("/scheduler").get_data(as_text=True)
-    # 排课页只显示本人课程（张老师 -> 数据结构）
+    assert client.get("/scheduler").status_code == 403
+    # 排课页只显示本人课程（张老师 -> 数据结构）；能耗页无权限（仅告警/业务视角可见）
     _login_as(client, "t_zhang", "cou123")
     sh = client.get("/scheduler").get_data(as_text=True)
     assert "数据结构" in sh
     assert "大学英语" not in sh
+    assert client.get("/energy").status_code == 403
 
 
 def test_counselor_can_reply_own_ticket(client):
@@ -381,3 +381,50 @@ def test_student_ai_page_shows_own_tickets_and_auto_refresh(client):
     client.post("/logout")
     _login_as(client, "admin", "SmartCampus@2026")
     assert "}, 12000)" not in client.get("/ai").get_data(as_text=True)
+
+
+# ---------------- 辅导员细分视角（教师 / 楼栋 / 业务，互不越界） ----------------
+
+def test_counselor_view_segmentation(client):
+    """教师只见课表；楼栋辅导员只见告警通知 + 所管宿舍能耗；业务辅导员不回归。"""
+    # 教师视角（张老师）：/scheduler 200，/ai 与 /energy 403；首页为"教师工作台"
+    _login_as(client, "t_zhang", "cou123")
+    assert client.get("/scheduler").status_code == 200
+    assert client.get("/ai").status_code == 403
+    assert client.get("/energy").status_code == 403
+    home = client.get("/").get_data(as_text=True)
+    assert "教师工作台" in home and "我的课表" in home
+    assert "宿舍能耗" not in home and "辅导员工作台" not in home
+    client.post("/logout")
+
+    # 楼栋辅导员（f1）：/ai(告警通知) + /energy 200，/scheduler 403；工作台仅告警通知
+    _login_as(client, "f1", "cou123")
+    assert client.get("/energy").status_code == 200
+    h_ai = client.get("/ai").get_data(as_text=True)
+    assert "宿舍告警通知" in h_ai and "告警通知中心" in h_ai
+    assert "工单处理中心" not in h_ai
+    assert "最近咨询记录</div>" not in h_ai
+    assert client.get("/scheduler").status_code == 403
+    client.post("/logout")
+
+    # 业务辅导员（counselor）：三页正常 + 完整工作台（不回归）
+    _login_as(client, "counselor", "cou123")
+    for p in ("/ai", "/energy", "/scheduler"):
+        assert client.get(p).status_code == 200
+    assert "工单处理中心" in client.get("/ai").get_data(as_text=True)
+
+
+def test_student_resolve_button_interaction_ready(client):
+    """学生结单按钮：带 id 且页面无原生 confirm/alert（沙箱预览环境同样可交互）。"""
+    _login_as(client, "student", "stu123")
+    tok = _csrf_from_session(client)
+    client.post(
+        "/api/chat",
+        json={"message": "我寝室插座坏了找谁？", "student_id": "20230001"},
+        headers={"X-CSRF-Token": tok},
+    )
+    html = client.get("/ai").get_data(as_text=True)
+    assert "resolve-btn-" in html          # 两段确认所需按钮 id
+    assert "再次点击确认结单" in html      # 页内二次确认文案
+    assert "confirm(" not in html          # 不依赖原生弹窗
+    assert "alert(" not in html

@@ -1,13 +1,16 @@
 {% extends "base.html" %}
-{% block title %}{% if current_user and current_user.role=='student' %}学生工作台{% elif current_user and current_user.role=='counselor' %}辅导员工作台{% elif current_user and current_user.role=='admin' %}管理工作台{% else %}工作台{% endif %} - 智慧校园管理平台{% endblock %}
+{% block title %}{% if current_user and current_user.role=='student' %}学生工作台{% elif current_user and current_user.role=='counselor' %}{% if counselor_view == 'teacher' %}教师工作台{% else %}辅导员工作台{% endif %}{% elif current_user and current_user.role=='admin' %}管理工作台{% else %}工作台{% endif %} - 智慧校园管理平台{% endblock %}
 {% block content %}
 <div class="page-head">
-    <h1>{% if current_user and current_user.role=='student' %}学生工作台{% elif current_user and current_user.role=='counselor' %}辅导员工作台{% elif current_user and current_user.role=='admin' %}管理工作台{% else %}工作台{% endif %}</h1>
+    <h1>{% if current_user and current_user.role=='student' %}学生工作台{% elif current_user and current_user.role=='counselor' %}{% if counselor_view == 'teacher' %}教师工作台{% else %}辅导员工作台{% endif %}{% elif current_user and current_user.role=='admin' %}管理工作台{% else %}工作台{% endif %}</h1>
     <p>
         {%- if current_user and current_user.role=='student' -%}
         7×24 小时 AI 咨询与工单跟踪，有问题随时来问。
         {%- elif current_user and current_user.role=='counselor' -%}
-        处理流转到你职责的工单与告警，查看职责范围内的宿舍能耗与课表数据。
+        {%- if counselor_view == 'building' -%}接收并处理你所管楼栋的高能耗告警，查看楼栋能耗明细。
+        {%- elif counselor_view == 'teacher' -%}查看本人授课课程的时间与教室安排（只读）。
+        {%- else -%}处理流转到你职责的工单与告警，查看职责范围内的宿舍能耗与课表数据。
+        {%- endif -%}
         {%- elif current_user and current_user.role=='admin' -%}
         全局掌握三大子系统运行；能耗分析、排课求解由你掌控。
         {%- else -%}
@@ -25,7 +28,7 @@
         {% if current_user.role == 'counselor' and current_user.handler %}负责业务：{{ current_user.handler }}{% endif %}
         <br>
         {% if current_user.role == 'student' %}遇到问题先问 AI 辅导员：无法自动处理时会生成工单流转给对应辅导员，处理进度可在导航『在线咨询』中随时跟踪。
-        {% elif current_user.role == 'counselor' %}在『辅导员工作台』处理工单与告警；『宿舍能耗』与『我的课表』只读查看你职责范围内的数据。
+        {% elif current_user.role == 'counselor' %}{% if counselor_view == 'building' %}在『告警通知』接收处理所管楼栋的高能耗告警；『所管宿舍能耗』查看楼栋能耗明细。{% elif counselor_view == 'teacher' %}在『我的课表』查看本人授课课程与教室安排。{% else %}在『辅导员工作台』处理工单与告警；『宿舍能耗』与『我的课表』只读查看你职责范围内的数据。{% endif %}
         {% elif current_user.role == 'admin' %}可运行能耗采集分析与排课求解、处理全量工单与告警，并向负责辅导员分配高能耗通知。
         {% endif %}
         {% else %}
@@ -35,27 +38,31 @@
 </div>
 
 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;margin-bottom:20px;">
-    <!-- 卡片一：AI 客服（各角色称谓与描述不同） -->
+    {% if '/ai' in allowed_pages %}
+    <!-- 卡片一：各视角主入口（在线咨询 / 工作台 / 告警通知 / 智能客服） -->
     <div class="card" style="display:flex;flex-direction:column;margin-bottom:0;">
-        <div style="font-size:14px;font-weight:600;margin-bottom:6px;">{% if current_user and current_user.role=='student' %}在线咨询{% elif current_user and current_user.role=='counselor' %}辅导员工作台{% else %}智能客服{% endif %}</div>
+        <div style="font-size:14px;font-weight:600;margin-bottom:6px;">{% if current_user and current_user.role=='student' %}在线咨询{% elif current_user and current_user.role=='counselor' %}{% if counselor_view == 'building' %}告警通知{% else %}辅导员工作台{% endif %}{% else %}智能客服{% endif %}</div>
         <p style="color:var(--text-2);font-size:13px;flex:1;">
             {% if current_user and current_user.role=='student' %}
             7×24 小时解答请假、奖学金、学籍异动等问题；复杂情况自动生成工单并流转给对应辅导员，你可在此跟踪处理进度。
             {% elif current_user and current_user.role=='counselor' %}
-            集中处理流转到你职责的咨询工单：在线回复、跟踪结案；同时接收你负责楼栋的高能耗告警通知。
+            {% if counselor_view == 'building' %}接收并处理你所管楼栋的高能耗告警通知，处理结果形成闭环记录。{% else %}集中处理流转到你职责的咨询工单：在线回复、跟踪结案；同时接收你负责楼栋的高能耗告警通知。{% endif %}
             {% else %}
             全量工单流转与咨询中心：查看所有学生咨询与工单，可代学生登记问题、回复并结案任意工单。
             {% endif %}
         </p>
-        <a class="btn" href="/ai" style="margin-top:16px;align-self:flex-start;">{% if current_user and current_user.role=='student' %}进入咨询{% elif current_user and current_user.role=='counselor' %}进入工作台{% else %}进入客服中心{% endif %}</a>
+        <a class="btn" href="/ai" style="margin-top:16px;align-self:flex-start;">{% if current_user and current_user.role=='student' %}进入咨询{% elif current_user and current_user.role=='counselor' %}{% if counselor_view == 'building' %}查看告警{% else %}进入工作台{% endif %}{% else %}进入客服中心{% endif %}</a>
     </div>
+    {% endif %}
     {% if '/energy' in allowed_pages %}
     <!-- 卡片二：能耗 -->
     <div class="card" style="display:flex;flex-direction:column;margin-bottom:0;">
-        <div style="font-size:14px;font-weight:600;margin-bottom:6px;">{% if current_user and current_user.role=='admin' %}能耗监控{% else %}宿舍能耗{% endif %}</div>
+        <div style="font-size:14px;font-weight:600;margin-bottom:6px;">{% if current_user and current_user.role=='admin' %}能耗监控{% elif counselor_view == 'building' %}所管宿舍能耗{% else %}宿舍能耗{% endif %}</div>
         <p style="color:var(--text-2);font-size:13px;flex:1;">
             {% if current_user and current_user.role=='admin' %}
             采集 IoT 数据、IoT + 智算视觉双通道识别违规电器、预测用电高峰，并向负责辅导员发出高能耗告警。
+            {% elif counselor_view == 'building' %}
+            只读查看你所管楼栋的逐宿舍能耗与违规用电告警；高能耗告警已同步到『告警通知』。
             {% else %}
             只读查看你职责范围内的宿舍能耗与违规用电告警；高能耗告警会同步到你的辅导员工作台。
             {% endif %}
@@ -98,7 +105,7 @@
     </div>
     <p style="color:var(--text-3);font-size:12px;margin-top:10px;">辅导员回复后会在『在线咨询』的「我的工单」中自动刷新显示，无需反复刷新页面。</p>
 </div>
-{% else %}
+{% elif counselor_view not in ('building', 'teacher') %}
 <div class="card">
     <div class="card-title">能力清单</div>
     <div style="display:flex;flex-wrap:wrap;gap:8px;">
