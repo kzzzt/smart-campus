@@ -13,6 +13,8 @@ env/
 
 # 运行时生成的 SQLite 数据文件
 *.db
+*.db.bak-*
+*.bak
 campus.db
 webapp/campus.db
 

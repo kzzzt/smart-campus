@@ -39,6 +39,8 @@ def ok(name: str) -> bool:
         return False
     if name.endswith((".pyc", ".db", ".zip")):
         return False
+    if ".bak" in name:  # 数据库备份等临时文件
+        return False
     if name in (".secret_key", "campus.db"):
         return False
     return True
