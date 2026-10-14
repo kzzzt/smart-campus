@@ -55,6 +55,25 @@ NAV_LABELS = {
     "admin": {"/ai": "智能客服", "/energy": "能耗监控", "/scheduler": "排课管理"},
 }
 
+# 意图中文标签（咨询记录 / 工单展示用，避免前端暴露英文代码）
+INTENT_LABELS = {
+    "leave": "请假业务",
+    "scholarship": "奖学金评定",
+    "status_change": "学籍异动",
+    "other": "其他咨询",
+}
+
+# 排课时段英文代码 -> 中文展示（mon-a -> 周一 第1段）
+_SLOT_DAYS = {"mon": "周一", "tue": "周二", "wed": "周三", "thu": "周四", "fri": "周五", "sat": "周六", "sun": "周日"}
+_SLOT_SEGS = {"a": "第1段", "b": "第2段", "c": "第3段", "d": "第4段"}
+
+
+def slot_label(slot: str) -> str:
+    parts = (slot or "").split("-")
+    if len(parts) == 2:
+        return f"{_SLOT_DAYS.get(parts[0], parts[0])} {_SLOT_SEGS.get(parts[1], parts[1])}"
+    return slot or ""
+
 # 楼栋辅导员名单（与模拟数据的楼栋映射共用同一来源，保证数据范围判断一致）
 BUILDING_HANDLERS = set(HANDLER_BY_BUILDING.values())
 # 排课演示课程的授课教师名单（用于识别"教师视角"辅导员，避免尚无排课数据时误判为无职责）
@@ -320,25 +339,88 @@ def _inject_globals():
     nav = dict(NAV_LABELS.get(role, {}))
     if cview == "building":
         nav.update({"/ai": "告警通知", "/energy": "所管宿舍能耗"})
+    # 角色显示名：辅导员细分视角更精确（教师 / 生活辅导员）
+    role_label = ROLES.get(role, role) if role else ""
+    if cview == "teacher":
+        role_label = "教师"
+    elif cview == "building":
+        role_label = "生活辅导员"
     return {
         "csrf_token": _csrf_token(),
         "is_logged_in": _is_logged_in(),
         "current_user": u,
         "counselor_view": cview,
+        "role_label": role_label,
         "allowed_pages": sorted(allowed, key=lambda p: ["/ai", "/energy", "/scheduler"].index(p)) if allowed else [],
         "ROLES": ROLES,
         "ROLE_PAGES": ROLE_PAGES,
         "NAV_LABELS": NAV_LABELS,
         "nav_labels": nav,
+        "INTENT_LABELS": INTENT_LABELS,
+        "slot_label": slot_label,
         "READ_ONLY_PAGES_FOR_STUDENT": READ_ONLY_PAGES_FOR_STUDENT,
     }
 
 
 # ---------------- 页面路由 ----------------
 
+def _home_stats(u: dict | None) -> list:
+    """工作台数据概览（按角色/细分视角取数）。返回 [(label, value, icon, color), ...]"""
+    if not u:
+        return []
+    role = u["role"]
+    if role == "student":
+        sid = u.get("student_id") or ""
+        mine = db.list_tickets(role="student", who=sid)
+        return [
+            ("进行中工单", len([t for t in mine if t["status"] != "resolved"]), "ticket", "amber"),
+            ("已结案工单", len([t for t in mine if t["status"] == "resolved"]), "check-circle", "green"),
+            ("累计咨询", len([c for c in db.recent_conversations(limit=200) if c["student_id"] == sid]), "chat", "blue"),
+        ]
+    if role == "counselor":
+        h = u.get("handler") or ""
+        view = _counselor_view(u)
+        notices = [n for n in db.list_energy_notices() if n["handler"] == h]
+        if view == "teacher":
+            rows = db.list_schedules_by_teacher(h)
+            return [
+                ("我的课程", len(rows), "calendar", "purple"),
+                ("排课时段", len({s.get("time_slot") for s in rows}), "clock", "blue"),
+            ]
+        if view == "building":
+            return [
+                ("待处理告警", len([n for n in notices if not n.get("acknowledged")]), "bell", "amber"),
+                ("已处理告警", len([n for n in notices if n.get("acknowledged")]), "check-circle", "green"),
+            ]
+        mine = db.list_tickets(role="counselor", who=h)
+        return [
+            ("待处理工单", len([t for t in mine if t["status"] != "resolved" and t.get("last_sender") in (None, "student")]), "clock", "amber"),
+            ("已答复工单", len([t for t in mine if t["status"] != "resolved" and t.get("last_sender") in ("counselor", "admin")]), "chat", "blue"),
+            ("已结案工单", len([t for t in mine if t["status"] == "resolved"]), "check-circle", "green"),
+        ]
+    # 管理人员：全局概览
+    all_t = db.list_tickets(role="", who="")
+    alerts = db.list_energy_alerts()
+    sched = db.list_schedules()
+    return [
+        ("工单总数", len(all_t), "ticket", "blue"),
+        ("处理中工单", len([t for t in all_t if t["status"] != "resolved"]), "clock", "amber"),
+        ("违规用电告警", len(alerts), "alert", "red"),
+        ("在排课程", len(sched), "calendar", "purple"),
+    ]
+
+
 @app.route("/")
 def index():
-    return render_template("index.html")
+    u = _current_user()
+    hour = datetime.now().hour
+    greeting = "早上好" if hour < 9 else ("上午好" if hour < 12 else ("下午好" if hour < 18 else "晚上好"))
+    return render_template(
+        "index.html",
+        stats=_home_stats(u),
+        greeting=greeting,
+        today=datetime.now().strftime("%Y年%m月%d日"),
+    )
 
 
 @app.route("/ai")

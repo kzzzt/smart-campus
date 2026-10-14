@@ -1,85 +1,97 @@
 {% extends "base.html" %}
+{% from "_icons.html" import icon %}
 {% block title %}登录 - 智慧校园管理平台{% endblock %}
 {% block content %}
-<div style="max-width:460px;margin:44px auto 0;">
-    <div class="card" style="padding:28px 32px;">
-        <div style="text-align:center;margin-bottom:20px;">
-            <div style="width:44px;height:44px;border-radius:12px;background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;margin:0 auto 12px;">校</div>
-            <h1 style="font-size:18px;font-weight:600;">智慧校园管理平台</h1>
-            <p style="color:var(--text-2);font-size:13px;margin-top:4px;">请选择角色登录</p>
+<div class="login-wrap">
+    <aside class="login-brand">
+        <div class="lb-top">
+            <div class="lb-logo">校</div>
+            <div class="lb-name">智慧校园管理与安全平台<em>SMART CAMPUS MANAGEMENT &amp; SAFETY PLATFORM</em></div>
         </div>
-        {% if error %}
-        <div style="background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:16px;">{{ error }}</div>
-        {% endif %}
-
-        <!-- 角色快速登录卡片 -->
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:18px;">
-            <div class="role-card" data-role="student" style="border:1px solid var(--border);border-radius:10px;padding:12px 8px;text-align:center;cursor:pointer;transition:all .15s;">
-                <div style="font-size:22px;">👨‍🎓</div>
-                <div style="font-weight:600;font-size:13px;margin-top:4px;">学生</div>
-                <div style="font-size:11px;color:var(--text-3);margin-top:2px;">咨询答疑 / 工单跟踪</div>
-            </div>
-            <div class="role-card" data-role="counselor" style="border:1px solid var(--border);border-radius:10px;padding:12px 8px;text-align:center;cursor:pointer;transition:all .15s;">
-                <div style="font-size:22px;">👩‍🏫</div>
-                <div style="font-weight:600;font-size:13px;margin-top:4px;">辅导员</div>
-                <div style="font-size:11px;color:var(--text-3);margin-top:2px;">工单处理 / 能耗 / 课表</div>
-            </div>
-            <div class="role-card" data-role="admin" style="border:1px solid var(--border);border-radius:10px;padding:12px 8px;text-align:center;cursor:pointer;transition:all .15s;">
-                <div style="font-size:22px;">🛡️</div>
-                <div style="font-weight:600;font-size:13px;margin-top:4px;">管理人员</div>
-                <div style="font-size:11px;color:var(--text-3);margin-top:2px;">全量管理与调度</div>
-            </div>
+        <div class="lb-body">
+            <h1>AI 赋能校园<br><span>管理与安全</span>一体化平台</h1>
+            <p class="lb-sub">面向高校管理层的一站式解决方案：AI 教务客服与工单闭环、能耗安全双通道预警、遗传算法智能排课，助力校园运营提效降本。</p>
+            <ul class="lb-points">
+                <li><span class="dot">{{ icon('check', 12) }}</span>7×24 小时 AI 教务咨询 · 人工工单闭环流转</li>
+                <li><span class="dot">{{ icon('check', 12) }}</span>IoT + 智算视觉双通道违规用电识别</li>
+                <li><span class="dot">{{ icon('check', 12) }}</span>遗传算法排课 · 教室智能调度</li>
+            </ul>
         </div>
+        <div class="lb-foot">湛卢·智能体与原生IDE应用开发大赛参赛作品 · 团队 ai双子星</div>
+    </aside>
 
-        <form method="POST" action="/login">
-            <div style="margin-bottom:16px;">
-                <label style="display:block;font-size:13px;color:var(--text-2);margin-bottom:6px;">账号</label>
-                <input type="text" id="username" name="username" value="{{ request.form.get('username','') }}" autocomplete="username" placeholder="请输入账号" style="width:100%;padding:10px 14px;border:1px solid var(--border);border-radius:8px;font-size:14px;outline:none;">
-            </div>
-            <div style="margin-bottom:20px;">
-                <label style="display:block;font-size:13px;color:var(--text-2);margin-bottom:6px;">密码</label>
-                <input type="password" name="password" autocomplete="current-password" placeholder="请输入密码" style="width:100%;padding:10px 14px;border:1px solid var(--border);border-radius:8px;font-size:14px;outline:none;">
-            </div>
-            <button type="submit" class="btn btn-block" style="padding:11px;">登 录</button>
-        </form>
+    <section class="login-panel">
+        <div class="login-box">
+            <h2>欢迎登录</h2>
+            <p class="login-tip">请选择角色快速进入，或使用账号密码登录</p>
+            {% if error %}
+            <div class="alert alert-danger" style="margin-bottom:16px;">{{ error }}</div>
+            {% endif %}
 
-        <div style="margin-top:16px;">
-            <div style="font-size:12px;color:var(--text-2);margin-bottom:8px;"><b>测试一键登录</b>（直接以该角色进入，无需输入账号密码）</div>
-            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
+            <div class="role-cards">
+                <div class="role-card" data-role="student">
+                    <span class="rc-ic">{{ icon('cap', 20) }}</span>
+                    <b>学生</b><small>咨询答疑 · 工单跟踪</small>
+                </div>
+                <div class="role-card" data-role="counselor">
+                    <span class="rc-ic">{{ icon('book', 20) }}</span>
+                    <b>辅导员</b><small>工单处理 · 能耗课表</small>
+                </div>
+                <div class="role-card" data-role="admin">
+                    <span class="rc-ic">{{ icon('shield', 20) }}</span>
+                    <b>管理人员</b><small>全量管理与调度</small>
+                </div>
+            </div>
+
+            <form method="POST" action="/login">
+                <div style="margin-bottom:14px;">
+                    <label class="form-label" for="username">账号</label>
+                    <input class="input" type="text" id="username" name="username"
+                           value="{{ request.form.get('username','') }}" autocomplete="username" placeholder="请输入账号">
+                </div>
+                <div style="margin-bottom:18px;">
+                    <label class="form-label" for="password">密码</label>
+                    <input class="input" type="password" id="password" name="password"
+                           autocomplete="current-password" placeholder="请输入密码">
+                </div>
+                <button type="submit" class="btn btn-block" style="padding:11px;">登 录</button>
+            </form>
+
+            <div class="quick-row">
                 <form method="POST" action="/login" style="margin:0;">
                     <input type="hidden" name="username" value="{{ demo_accounts.student[0] }}">
                     <input type="hidden" name="password" value="{{ demo_accounts.student[1] }}">
-                    <button type="submit" class="btn" style="width:100%;justify-content:center;background:#16a34a;padding:8px 0;font-size:13px;">学生进入</button>
+                    <button type="submit" class="btn btn-ghost btn-sm" style="width:100%;">学生进入</button>
                 </form>
                 <form method="POST" action="/login" style="margin:0;">
                     <input type="hidden" name="username" value="{{ demo_accounts.counselor[0] }}">
                     <input type="hidden" name="password" value="{{ demo_accounts.counselor[1] }}">
-                    <button type="submit" class="btn" style="width:100%;justify-content:center;background:#7e22ce;padding:8px 0;font-size:13px;">辅导员进入</button>
+                    <button type="submit" class="btn btn-ghost btn-sm" style="width:100%;">辅导员进入</button>
                 </form>
                 <form method="POST" action="/login" style="margin:0;">
                     <input type="hidden" name="username" value="{{ demo_accounts.admin[0] }}">
                     <input type="hidden" name="password" value="{{ demo_accounts.admin[1] }}">
-                    <button type="submit" class="btn" style="width:100%;justify-content:center;background:#2f54eb;padding:8px 0;font-size:13px;">管理员进入</button>
+                    <button type="submit" class="btn btn-ghost btn-sm" style="width:100%;">管理员进入</button>
                 </form>
             </div>
-        </div>
 
-        <div style="margin-top:16px;font-size:12px;color:var(--text-3);line-height:2;">
-            <b>演示账号：</b><br>
-            学生 <b>{{ demo_accounts.student[0] }}</b> / {{ demo_accounts.student[1] }}<br>
-            辅导员 <b>{{ demo_accounts.counselor[0] }}</b> / {{ demo_accounts.counselor[1] }}（综合事务岗）<br>
-            管理人员 <b>{{ demo_accounts.admin[0] }}</b> / {{ demo_accounts.admin[1] }}<br>
-            更多视角：<b>f1</b>（1号楼生活辅导员·所管宿舍能耗）、<b>t_zhang</b>（张老师·个人课表），口令同辅导员 <b>{{ demo_accounts.counselor[1] }}</b>
+            <div class="demo-tip">
+                <b>演示账号：</b><br>
+                学生 <b>{{ demo_accounts.student[0] }}</b> / {{ demo_accounts.student[1] }} ·
+                辅导员 <b>{{ demo_accounts.counselor[0] }}</b> / {{ demo_accounts.counselor[1] }} ·
+                管理人员 <b>{{ demo_accounts.admin[0] }}</b> / {{ demo_accounts.admin[1] }}<br>
+                <b>更多视角：</b><b>f1</b>（1号楼生活辅导员 · 所管宿舍能耗）、<b>t_zhang</b>（张老师 · 个人课表），口令同辅导员
+            </div>
+            <div style="text-align:center;margin-top:14px;">
+                <a href="/" style="font-size:13px;color:var(--primary);">← 返回工作台</a>
+            </div>
         </div>
-        <a href="/" style="display:block;text-align:center;margin-top:12px;font-size:13px;color:var(--primary);">← 返回工作台</a>
-    </div>
+    </section>
 </div>
-<style>
-    .role-card:hover { border-color: var(--primary) !important; box-shadow: 0 4px 12px rgba(47,84,235,.12); }
-    .role-card.selected { border-color: var(--primary) !important; background: var(--primary-light); }
-</style>
+{% endblock %}
+{% block scripts %}
 <script>
-    // 点击角色卡片自动填充该角色的演示账号
+    // 点击角色卡自动填充该角色的演示账号
     const ACCOUNTS = {
         student: {{ demo_accounts.student }},
         counselor: {{ demo_accounts.counselor }},
@@ -89,11 +101,8 @@
         card.addEventListener('click', () => {
             document.querySelectorAll('.role-card').forEach(c => c.classList.remove('selected'));
             card.classList.add('selected');
-            const role = card.dataset.role;
-            const acc = ACCOUNTS[role];
-            if (acc) {
-                document.getElementById('username').value = acc[0];
-            }
+            const acc = ACCOUNTS[card.dataset.role];
+            if (acc) document.getElementById('username').value = acc[0];
         });
     });
 </script>

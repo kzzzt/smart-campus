@@ -1,24 +1,50 @@
 {% extends "base.html" %}
+{% from "_icons.html" import icon %}
 {% block title %}{{ {'own':'所管宿舍能耗','overview':'宿舍能耗总览'}.get(energy_scope, '能耗监控') }} - 智慧校园管理平台{% endblock %}
 {% block content %}
+{% set conf_labels = {'high': '高', 'medium': '中', 'low': '低'} %}
 <div class="page-head">
-    <h1>{{ {'own':'所管宿舍能耗','overview':'宿舍能耗总览'}.get(energy_scope, '能耗与安全预警') }}</h1>
-    <p>
-        {%- if energy_scope == 'own' -%}
-        展示你负责宿舍楼栋的违规用电告警与逐宿舍能耗数据（只读）。
-        {%- elif energy_scope == 'overview' -%}
-        当前以综合岗视角展示全校宿舍能耗与告警总览（只读）。
-        {%- else -%}
-        IoT 功率采集 + 智算视觉双通道检测，识别违规用电并预测高峰时段，助力节能减排。
-        {%- endif -%}
-    </p>
+    <div>
+        <h1>{{ {'own':'所管宿舍能耗','overview':'宿舍能耗总览'}.get(energy_scope, '能耗与安全预警') }}</h1>
+        <p>
+            {%- if energy_scope == 'own' -%}
+            展示你负责宿舍楼栋的违规用电告警与逐宿舍能耗数据（只读）。
+            {%- elif energy_scope == 'overview' -%}
+            当前以综合岗视角展示全校宿舍能耗与告警总览（只读）。
+            {%- else -%}
+            IoT 功率采集 + 智算视觉双通道检测，识别违规用电并预测高峰时段，助力节能减排。
+            {%- endif -%}
+        </p>
+    </div>
+</div>
+
+<!-- 数据概览 -->
+<div class="stats">
+    <div class="stat">
+        <span class="stat-ic ic-red">{{ icon('alert', 20) }}</span>
+        <div><div class="stat-value">{{ alerts | length }}</div><div class="stat-label">违规用电告警</div></div>
+    </div>
+    <div class="stat">
+        <span class="stat-ic ic-amber">{{ icon('bolt', 20) }}</span>
+        <div><div class="stat-value">{{ rooms | selectattr('is_high') | list | length }}</div><div class="stat-label">高能耗宿舍</div></div>
+    </div>
+    <div class="stat">
+        <span class="stat-ic ic-blue">{{ icon('building', 20) }}</span>
+        <div><div class="stat-value">{{ rooms | length }}</div><div class="stat-label">监测宿舍数</div></div>
+    </div>
+    {% if energy_scope == 'all' %}
+    <div class="stat">
+        <span class="stat-ic ic-purple">{{ icon('trend', 20) }}</span>
+        <div><div class="stat-value">{{ forecast | selectattr('is_peak') | list | length }}</div><div class="stat-label">预测高峰时段（48h）</div></div>
+    </div>
+    {% endif %}
 </div>
 
 {% if energy_scope == 'all' %}
 <div class="card">
-    <div class="card-title">实时监控</div>
-    <p class="card-sub">点击按钮基于模拟 IoT 数据重新采集并分析一天能耗，生成告警与未来 24 小时高峰预测（管理人员专属操作）。</p>
-    <button class="btn" id="runBtn" onclick="runEnergy()">重新采集与分析</button>
+    <div class="card-title">实时监控 <small>管理人员专属操作</small></div>
+    <p class="card-sub">点击按钮基于模拟 IoT 数据重新采集并分析一天能耗，生成告警与未来 24 小时高峰预测。</p>
+    <button class="btn" id="runBtn" onclick="runEnergy()">{{ icon('refresh', 15) }} 重新采集与分析</button>
     <div id="result" style="margin-top:14px;"></div>
 </div>
 {% endif %}
@@ -27,41 +53,44 @@
     <div class="card-title">违规电器告警</div>
     <div id="alerts">
         {% for a in alerts %}
-        <div style="display:flex;align-items:flex-start;gap:12px;border:1px solid #fecaca;background:#fef2f2;padding:12px 14px;border-radius:8px;margin-bottom:10px;">
-            <span class="tag tag-red">{{ a.room }}</span>
-            <div>
-                <div><b>功率 {{ a.power_w }}W</b> · <span class="tag tag-red">{{ a.confidence }}</span></div>
-                <div style="margin-top:4px;font-size:13px;">{{ a.reason }}</div>
-                <div style="font-size:12px;color:var(--text-3);margin-top:4px;">{{ a.ts }}</div>
+        <div class="ticket-item" style="border-left-color:#dc2626;">
+            <div class="ticket-hd">
+                <div>
+                    <b style="color:#b91c1c;">{{ a.room }}</b>
+                    <span class="tag tag-red">功率 {{ a.power_w }}W</span>
+                    <span class="tag tag-gray">置信度 {{ conf_labels.get(a.confidence, a.confidence) }}</span>
+                </div>
+                <span style="font-size:12px;color:var(--text-3);white-space:nowrap;">{{ a.ts }}</span>
             </div>
+            <div style="margin-top:4px;font-size:13px;">{{ a.reason }}</div>
         </div>
         {% else %}
-        <p style="color:var(--text-3);font-size:13px;">{% if energy_scope == 'all' %}暂无告警，点击上方按钮生成模拟数据。{% else %}暂无告警数据。能耗采集由管理人员运行后更新。{% endif %}</p>
+        <p class="empty">{% if energy_scope == 'all' %}暂无告警，点击上方按钮生成模拟数据。{% else %}暂无告警数据。能耗采集由管理人员运行后更新。{% endif %}</p>
         {% endfor %}
     </div>
 </div>
 
 <div class="card">
     <div class="card-title">{% if energy_scope == 'own' %}我负责宿舍的能耗明细{% else %}各宿舍能耗明细（当前 / 最高）{% endif %}</div>
-    <div id="roomGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px;">
+    <div class="room-grid" id="roomGrid">
         {% for r in rooms %}
-        <div class="room-card {{ 'room-high' if r.is_high }}" style="border:1px solid {{ '#fecaca' if r.is_high else 'var(--line)' }};background:{{ '#fef2f2' if r.is_high else '#fff' }};border-radius:10px;padding:12px 14px;">
+        <div class="room-card{{ ' high' if r.is_high else '' }}">
             <div style="display:flex;justify-content:space-between;align-items:center;">
                 <b>{{ r.room }}</b>
                 <span class="tag {{ 'tag-red' if r.is_high else 'tag-green' }}">{{ '高能耗' if r.is_high else '正常' }}</span>
             </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;font-size:13px;">
-                <div><div style="color:var(--text-3);">当前能耗</div><div><b>{{ r.current_w }}</b><span style="color:var(--text-3);"> W</span></div></div>
-                <div><div style="color:var(--text-3);">当日最高</div><div><b>{{ r.max_w }}</b><span style="color:var(--text-3);"> W</span></div></div>
-                <div><div style="color:var(--text-3);">平均能耗</div><div>{{ r.avg_w }} W</div></div>
-                <div><div style="color:var(--text-3);">负责辅导员</div><div style="font-size:12px;">{{ r.handler }}</div></div>
+            <div class="room-kv">
+                <div><div class="k">当前能耗</div><div class="v"><b>{{ r.current_w }}</b> W</div></div>
+                <div><div class="k">当日最高</div><div class="v"><b>{{ r.max_w }}</b> W</div></div>
+                <div><div class="k">平均能耗</div><div class="v">{{ r.avg_w }} W</div></div>
+                <div><div class="k">负责辅导员</div><div class="v" style="font-size:12px;">{{ r.handler }}</div></div>
             </div>
             {% if r.is_high %}
             <div style="margin-top:8px;font-size:12px;color:#b91c1c;">已通知 {{ r.handler }}</div>
             {% endif %}
         </div>
         {% else %}
-        <p style="color:var(--text-3);font-size:13px;">{% if energy_scope == 'all' %}暂无宿舍能耗数据，点击上方按钮采集。{% else %}暂无宿舍能耗数据。请等待管理人员运行一次能耗采集。{% endif %}</p>
+        <p class="empty" style="grid-column:1/-1;">{% if energy_scope == 'all' %}暂无宿舍能耗数据，点击上方按钮采集。{% else %}暂无宿舍能耗数据。请等待管理人员运行一次能耗采集。{% endif %}</p>
         {% endfor %}
     </div>
 </div>
@@ -70,22 +99,24 @@
     <div class="card-title">{% if energy_scope == 'own' %}我的告警通知{% else %}辅导员告警通知{% endif %}</div>
     <div id="notices">
         {% for n in notices %}
-        <div style="display:flex;align-items:flex-start;gap:12px;border:1px solid #fde68a;background:#fffbeb;padding:12px 14px;border-radius:8px;margin-bottom:10px;">
-            <span class="tag tag-amber">{{ n.handler }}</span>
-            <div>
-                <div><b>{{ n.room }}</b> · 最高 {{ n.power_w }}W · <span class="tag {{ 'tag-red' if n.level=='high' else 'tag-amber' }}">{{ '严重' if n.level=='high' else '提示' }}</span></div>
-                <div style="margin-top:4px;font-size:13px;">{{ n.message }}</div>
-                <div style="font-size:12px;color:var(--text-3);margin-top:4px;">{{ n.created_at }}</div>
+        <div class="ticket-item" style="border-left-color:#d97706;">
+            <div class="ticket-hd">
+                <div>
+                    <b style="color:#b45309;">{{ n.handler }}</b> · <b>{{ n.room }}</b>
+                    <span class="tag {{ 'tag-red' if n.level=='high' else 'tag-amber' }}">{{ '严重' if n.level=='high' else '提示' }}</span>
+                </div>
+                <span style="font-size:12px;color:var(--text-3);white-space:nowrap;">{{ n.created_at }}</span>
             </div>
+            <div style="margin-top:4px;font-size:13px;">最高 {{ n.power_w }}W · {{ n.message }}</div>
         </div>
         {% else %}
-        <p style="color:var(--text-3);font-size:13px;">暂无高能耗宿舍，无需通知辅导员。</p>
+        <p class="empty">暂无高能耗宿舍，无需通知辅导员。</p>
         {% endfor %}
     </div>
 </div>
 
 {% if energy_scope == 'all' %}
-<div class="card">
+<div class="card" style="margin-bottom:0;">
     <div class="card-title">用电高峰预测（最近 48 时点）</div>
     <div class="table-wrap">
         <table>
@@ -119,16 +150,16 @@
             const d = await r.json();
             let visionHtml = '';
             if (d.vision && d.vision.detected) {
-                visionHtml = '<div style="margin-top:8px;background:var(--primary-light);border:1px solid #c7d2fe;color:#3730a3;padding:10px 14px;border-radius:8px;font-size:13px;">智算视觉复核命中 <b>' + d.vision.objects.length + '</b> 处高置信告警（' + esc(d.vision.objects.map(o=>o.room).join('、')) + '），最高置信度 ' + (d.vision.confidence*100).toFixed(0) + '%</div>';
+                visionHtml = '<div class="alert alert-info" style="margin-top:8px;">智算视觉复核命中 <b>' + d.vision.objects.length + '</b> 处高置信告警（' + esc(d.vision.objects.map(o=>o.room).join('、')) + '），最高置信度 ' + (d.vision.confidence*100).toFixed(0) + '%</div>';
             }
             document.getElementById('result').innerHTML =
-                '<div style="background:#f0fdf4;border:1px solid #86efac;color:#166534;padding:10px 14px;border-radius:8px;">检测到 <b>' + d.alarm_count +
+                '<div class="alert alert-success">检测到 <b>' + d.alarm_count +
                 '</b> 个疑似违规电器房间，预测未来 24h <b>' + d.peak_count + '</b> 个用电高峰。' +
                 (d.notices && d.notices.length ? '已向 <b>' + d.notices.length + '</b> 名辅导员发出高能耗告警。' : '') +
                 '建议：' + esc(d.suggestion) + '</div>' + visionHtml;
             refreshPanels();
         } catch(e) {
-            document.getElementById('result').innerHTML = '<div style="background:#fef2f2;color:#b91c1c;padding:10px 14px;border-radius:8px;">分析失败：' + esc(e.message) + '</div>';
+            document.getElementById('result').innerHTML = '<div class="alert alert-danger">分析失败：' + esc(e.message) + '</div>';
         } finally {
             btn.disabled = false; btn.textContent = '重新采集与分析';
         }

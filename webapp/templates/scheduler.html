@@ -1,32 +1,32 @@
 {% extends "base.html" %}
+{% from "_icons.html" import icon %}
 {% block title %}{{ {'own':'我的课表','overview':'课程总览'}.get(schedule_scope, '排课管理') }} - 智慧校园管理平台{% endblock %}
 {% block content %}
 <div class="page-head">
-    <h1>{{ {'own':'我的课表','overview':'课程总览'}.get(schedule_scope, '智能排课与教室调度') }}</h1>
-    <p>
-        {%- if schedule_scope == 'own' -%}
-        展示你授课课程的时间 / 教室安排（只读查看）。
-        {%- elif schedule_scope == 'overview' -%}
-        你当前没有授课安排，以下为全校课程排课总览（只读）。
-        {%- else -%}
-        遗传算法求解课程-时段-教室最优分配，满足教师/教室无冲突、容量充足、需电脑课程入机房等约束。
-        {%- endif -%}
-    </p>
+    <div>
+        <h1>{{ {'own':'我的课表','overview':'课程总览'}.get(schedule_scope, '智能排课与教室调度') }}</h1>
+        <p>
+            {%- if schedule_scope == 'own' -%}
+            展示你授课课程的时间 / 教室安排（只读查看）。
+            {%- elif schedule_scope == 'overview' -%}
+            你当前没有授课安排，以下为全校课程排课总览（只读）。
+            {%- else -%}
+            遗传算法求解课程-时段-教室最优分配，满足教师/教室无冲突、容量充足、需电脑课程入机房等约束。
+            {%- endif -%}
+        </p>
+    </div>
 </div>
 
 {% if schedule_scope == 'all' %}
 <div class="card">
-    <div class="card-title">求解排课</div>
-    <p class="card-sub" style="max-width:860px;">
-        本次使用遗传算法（种群 30 × 迭代 100 代）求解课程-时段-教室的最优分配：满足硬约束（教师 / 教室无冲突、容量足够、需电脑的课入机房）
-        并优化软约束（教室类型 / 容量匹配度）。点击下方按钮触发求解（仅管理人员可操作）。
-    </p>
-    <button class="btn" id="runBtn" onclick="runSchedule()">重新求解排课</button>
+    <div class="card-title">求解排课 <small>管理人员专属操作</small></div>
+    <p class="card-sub">本次使用遗传算法（种群 30 × 迭代 100 代）求解课程-时段-教室的最优分配：满足硬约束（教师 / 教室无冲突、容量足够、需电脑的课入机房）并优化软约束（教室类型 / 容量匹配度）。点击下方按钮触发求解。</p>
+    <button class="btn" id="runBtn" onclick="runSchedule()">{{ icon('refresh', 15) }} 重新求解排课</button>
     <div id="result" style="margin-top:14px;"></div>
 </div>
 {% endif %}
 
-<div class="card">
+<div class="card" style="margin-bottom:0;">
     <div class="card-title">{{ {'own':'我的课表','overview':'全校课程总览'}.get(schedule_scope, '当前排课方案') }}</div>
     <div class="table-wrap">
         <table>
@@ -34,8 +34,8 @@
             <tbody id="scheduleBody">
                 {% for s in schedule %}
                 <tr>
-                    <td style="white-space:nowrap;">{{ s.time_slot }}</td>
-                    <td>{{ s.course }}</td>
+                    <td><span class="tag tag-blue" style="font-weight:600;">{{ slot_label(s.time_slot) }}</span></td>
+                    <td><b>{{ s.course }}</b></td>
                     <td>{{ s.teacher }}</td>
                     <td>{{ s.room }}</td>
                     <td><span class="tag {{ 'tag-purple' if s.room_type=='computer' else 'tag-green' if s.room_type=='lab' else 'tag-gray' }}">{{ '机房' if s.room_type=='computer' else '实验室' if s.room_type=='lab' else '普通教室' }}</span></td>
@@ -58,14 +58,14 @@
             const r = await fetch('/api/schedule/run', {method:'POST', headers:{'X-CSRF-Token':'{{ csrf_token }}'}});
             if (!r.ok) throw new Error('HTTP ' + r.status);
             const d = await r.json();
-            const cls = d.conflicts > 0 ? 'background:#fffbeb;border:1px solid #fcd34d;color:#92400e;' : 'background:#f0fdf4;border:1px solid #86efac;color:#166534;';
+            const cls = d.conflicts > 0 ? 'alert alert-warn' : 'alert alert-success';
             document.getElementById('result').innerHTML =
-                '<div style="' + cls + 'padding:10px 14px;border-radius:8px;">排课完成，适应度 ' + d.fitness + '，冲突数 ' + d.conflicts +
+                '<div class="' + cls + '">排课完成，适应度 ' + d.fitness + '，冲突数 ' + d.conflicts +
                 '，共 ' + d.schedule.length + ' 门课程。' +
                 (d.conflicts > 0 ? '<br>仍存在 ' + d.conflicts + ' 处硬约束冲突，建议调整课程 / 教室数据。' : '') + '</div>';
             refreshPanels();
         } catch(e) {
-            document.getElementById('result').innerHTML = '<div style="background:#fef2f2;color:#b91c1c;padding:10px 14px;border-radius:8px;">求解失败：' + esc(e.message) + '</div>';
+            document.getElementById('result').innerHTML = '<div class="alert alert-danger">求解失败：' + esc(e.message) + '</div>';
         } finally {
             btn.disabled = false; btn.textContent = '重新求解排课';
         }

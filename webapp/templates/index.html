@@ -1,116 +1,132 @@
 {% extends "base.html" %}
-{% block title %}{% if current_user and current_user.role=='student' %}学生工作台{% elif current_user and current_user.role=='counselor' %}{% if counselor_view == 'teacher' %}教师工作台{% else %}辅导员工作台{% endif %}{% elif current_user and current_user.role=='admin' %}管理工作台{% else %}工作台{% endif %} - 智慧校园管理平台{% endblock %}
+{% from "_icons.html" import icon %}
+{% set role = current_user.role if current_user else '' %}
+{% set cv = counselor_view %}
+{% block title %}{% if role=='student' %}学生工作台{% elif role=='counselor' %}{% if cv=='teacher' %}教师工作台{% else %}辅导员工作台{% endif %}{% elif role=='admin' %}管理工作台{% else %}工作台{% endif %} - 智慧校园管理平台{% endblock %}
 {% block content %}
-<div class="page-head">
-    <h1>{% if current_user and current_user.role=='student' %}学生工作台{% elif current_user and current_user.role=='counselor' %}{% if counselor_view == 'teacher' %}教师工作台{% else %}辅导员工作台{% endif %}{% elif current_user and current_user.role=='admin' %}管理工作台{% else %}工作台{% endif %}</h1>
-    <p>
-        {%- if current_user and current_user.role=='student' -%}
-        7×24 小时 AI 咨询与工单跟踪，有问题随时来问。
-        {%- elif current_user and current_user.role=='counselor' -%}
-        {%- if counselor_view == 'building' -%}接收并处理你所管楼栋的高能耗告警，查看楼栋能耗明细。
-        {%- elif counselor_view == 'teacher' -%}查看本人授课课程的时间与教室安排（只读）。
-        {%- else -%}处理流转到你职责的工单与告警，查看职责范围内的宿舍能耗与课表数据。
-        {%- endif -%}
-        {%- elif current_user and current_user.role=='admin' -%}
-        全局掌握三大子系统运行；能耗分析、排课求解由你掌控。
-        {%- else -%}
-        为学校管理层减负，提高校园运营效率。请登录后按角色进入对应功能。
-        {%- endif -%}
-    </p>
+
+<!-- 欢迎条 -->
+<div class="card" style="background:linear-gradient(120deg,#eff6ff 0%,#ffffff 62%);border-color:#dbeafe;">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:18px;flex-wrap:wrap;">
+        <div>
+            <div style="font-size:17px;font-weight:600;">
+                {{ greeting }}，{{ current_user.display_name if current_user else '访客' }}
+                {% if current_user %}<span class="tag tag-blue" style="margin-left:8px;vertical-align:2px;">{{ role_label }}</span>{% endif %}
+            </div>
+            <p style="color:var(--text-2);font-size:13px;margin-top:5px;">
+                {%- if role=='student' -%}
+                有问题随时咨询 AI 辅导员；无法自动处理的问题会生成工单，处理进度可在「在线咨询」中跟踪，也可以继续追问。
+                {%- elif role=='counselor' -%}
+                {%- if cv=='building' -%}在「告警通知」接收处理所管楼栋的高能耗告警；「所管宿舍能耗」查看楼栋能耗明细。
+                {%- elif cv=='teacher' -%}在「我的课表」查看本人授课课程与教室安排。
+                {%- else -%}在「辅导员工作台」处理工单与告警；「宿舍能耗」与「我的课表」只读查看你职责范围内的数据。
+                {%- endif -%}
+                {%- elif role=='admin' -%}
+                可运行能耗采集分析与排课求解、处理全量工单与告警，并向负责辅导员分配高能耗通知。
+                {%- else -%}
+                请先登录以使用完整功能。
+                {%- endif -%}
+            </p>
+        </div>
+        <div style="text-align:right;font-size:12px;color:var(--text-3);line-height:1.9;">
+            <div>{{ today }}</div>
+            {% if current_user and role=='student' and current_user.student_id %}<div>学号 {{ current_user.student_id }}</div>{% endif %}
+            {% if current_user and role=='counselor' and current_user.handler %}<div>职责：{{ current_user.handler }}</div>{% endif %}
+        </div>
+    </div>
 </div>
 
-<div class="card" style="background:var(--primary-light);border-color:#c7d2fe;">
-    <div class="card-title">欢迎回来，{{ current_user.display_name if current_user else '访客' }}</div>
-    <p style="color:var(--text-2);font-size:13px;">
-        {% if current_user %}
-        当前身份：<span class="tag tag-blue">{{ ROLES.get(current_user.role, current_user.role) }}</span>
-        {% if current_user.role == 'student' and current_user.student_id %}学号 {{ current_user.student_id }}{% endif %}
-        {% if current_user.role == 'counselor' and current_user.handler %}负责业务：{{ current_user.handler }}{% endif %}
-        <br>
-        {% if current_user.role == 'student' %}遇到问题先问 AI 辅导员：无法自动处理时会生成工单流转给对应辅导员，处理进度可在导航『在线咨询』中随时跟踪。
-        {% elif current_user.role == 'counselor' %}{% if counselor_view == 'building' %}在『告警通知』接收处理所管楼栋的高能耗告警；『所管宿舍能耗』查看楼栋能耗明细。{% elif counselor_view == 'teacher' %}在『我的课表』查看本人授课课程与教室安排。{% else %}在『辅导员工作台』处理工单与告警；『宿舍能耗』与『我的课表』只读查看你职责范围内的数据。{% endif %}
-        {% elif current_user.role == 'admin' %}可运行能耗采集分析与排课求解、处理全量工单与告警，并向负责辅导员分配高能耗通知。
-        {% endif %}
-        {% else %}
-        请先登录以使用完整功能。
-        {% endif %}
-    </p>
+<!-- 数据概览 -->
+{% if stats %}
+<div class="stats">
+    {% for label, value, ic, color in stats %}
+    <div class="stat">
+        <span class="stat-ic ic-{{ color }}">{{ icon(ic, 20) }}</span>
+        <div>
+            <div class="stat-value">{{ value }}</div>
+            <div class="stat-label">{{ label }}</div>
+        </div>
+    </div>
+    {% endfor %}
 </div>
+{% endif %}
 
-<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;margin-bottom:20px;">
+<!-- 功能入口 -->
+<div class="entry-grid">
     {% if '/ai' in allowed_pages %}
-    <!-- 卡片一：各视角主入口（在线咨询 / 工作台 / 告警通知 / 智能客服） -->
-    <div class="card" style="display:flex;flex-direction:column;margin-bottom:0;">
-        <div style="font-size:14px;font-weight:600;margin-bottom:6px;">{% if current_user and current_user.role=='student' %}在线咨询{% elif current_user and current_user.role=='counselor' %}{% if counselor_view == 'building' %}告警通知{% else %}辅导员工作台{% endif %}{% else %}智能客服{% endif %}</div>
-        <p style="color:var(--text-2);font-size:13px;flex:1;">
-            {% if current_user and current_user.role=='student' %}
+    <div class="card entry-card">
+        <div class="entry-ic ic-blue">{{ icon('chat', 22) }}</div>
+        <div class="entry-t">{% if role=='student' %}在线咨询{% elif cv=='building' %}告警通知{% else %}辅导员工作台{% endif %}</div>
+        <div class="entry-d">
+            {%- if role=='student' -%}
             7×24 小时解答请假、奖学金、学籍异动等问题；复杂情况自动生成工单并流转给对应辅导员，你可在此跟踪处理进度。
-            {% elif current_user and current_user.role=='counselor' %}
-            {% if counselor_view == 'building' %}接收并处理你所管楼栋的高能耗告警通知，处理结果形成闭环记录。{% else %}集中处理流转到你职责的咨询工单：在线回复、跟踪结案；同时接收你负责楼栋的高能耗告警通知。{% endif %}
-            {% else %}
-            全量工单流转与咨询中心：查看所有学生咨询与工单，可代学生登记问题、回复并结案任意工单。
-            {% endif %}
-        </p>
-        <a class="btn" href="/ai" style="margin-top:16px;align-self:flex-start;">{% if current_user and current_user.role=='student' %}进入咨询{% elif current_user and current_user.role=='counselor' %}{% if counselor_view == 'building' %}查看告警{% else %}进入工作台{% endif %}{% else %}进入客服中心{% endif %}</a>
+            {%- elif cv=='building' -%}
+            接收并处理你所管楼栋的高能耗告警通知，处理结果形成闭环记录。
+            {%- else -%}
+            集中处理流转到你职责的咨询工单：在线回复、跟踪结案；同时接收你负责楼栋的高能耗告警通知。
+            {%- endif -%}
+        </div>
+        <a class="btn btn-sm" href="/ai">{% if role=='student' %}进入咨询{% elif cv=='building' %}查看告警{% else %}进入工作台{% endif %}</a>
     </div>
     {% endif %}
     {% if '/energy' in allowed_pages %}
-    <!-- 卡片二：能耗 -->
-    <div class="card" style="display:flex;flex-direction:column;margin-bottom:0;">
-        <div style="font-size:14px;font-weight:600;margin-bottom:6px;">{% if current_user and current_user.role=='admin' %}能耗监控{% elif counselor_view == 'building' %}所管宿舍能耗{% else %}宿舍能耗{% endif %}</div>
-        <p style="color:var(--text-2);font-size:13px;flex:1;">
-            {% if current_user and current_user.role=='admin' %}
+    <div class="card entry-card">
+        <div class="entry-ic ic-green">{{ icon('bolt', 22) }}</div>
+        <div class="entry-t">{% if role=='admin' %}能耗监控{% elif cv=='building' %}所管宿舍能耗{% else %}宿舍能耗{% endif %}</div>
+        <div class="entry-d">
+            {%- if role=='admin' -%}
             采集 IoT 数据、IoT + 智算视觉双通道识别违规电器、预测用电高峰，并向负责辅导员发出高能耗告警。
-            {% elif counselor_view == 'building' %}
-            只读查看你所管楼栋的逐宿舍能耗与违规用电告警；高能耗告警已同步到『告警通知』。
-            {% else %}
+            {%- elif cv=='building' -%}
+            只读查看你所管楼栋的逐宿舍能耗与违规用电告警；高能耗告警已同步到「告警通知」。
+            {%- else -%}
             只读查看你职责范围内的宿舍能耗与违规用电告警；高能耗告警会同步到你的辅导员工作台。
-            {% endif %}
-        </p>
-        <a class="btn" href="/energy" style="margin-top:16px;align-self:flex-start;">{% if current_user and current_user.role=='admin' %}打开能耗监控{% else %}查看能耗{% endif %}</a>
+            {%- endif -%}
+        </div>
+        <a class="btn btn-sm" href="/energy">{% if role=='admin' %}打开能耗监控{% else %}查看能耗{% endif %}</a>
     </div>
     {% endif %}
     {% if '/scheduler' in allowed_pages %}
-    <!-- 卡片三：排课 -->
-    <div class="card" style="display:flex;flex-direction:column;margin-bottom:0;">
-        <div style="font-size:14px;font-weight:600;margin-bottom:6px;">{% if current_user and current_user.role=='admin' %}排课管理{% else %}我的课表{% endif %}</div>
-        <p style="color:var(--text-2);font-size:13px;flex:1;">
-            {% if current_user and current_user.role=='admin' %}
+    <div class="card entry-card">
+        <div class="entry-ic ic-purple">{{ icon('calendar', 22) }}</div>
+        <div class="entry-t">{% if role=='admin' %}排课管理{% else %}我的课表{% endif %}</div>
+        <div class="entry-d">
+            {%- if role=='admin' -%}
             遗传算法 + 教室智能分配，一键求解排课冲突，满足教师 / 教室无冲突、容量充足、需电脑课程入机房等约束。
-            {% else %}
+            {%- else -%}
             只读查看本人授课课程的时间 / 教室安排；求解排课由管理人员负责。
-            {% endif %}
-        </p>
-        <a class="btn" href="/scheduler" style="margin-top:16px;align-self:flex-start;">{% if current_user and current_user.role=='admin' %}打开排课管理{% else %}查看课表{% endif %}</a>
+            {%- endif -%}
+        </div>
+        <a class="btn btn-sm" href="/scheduler">{% if role=='admin' %}打开排课管理{% else %}查看课表{% endif %}</a>
     </div>
     {% endif %}
     {% if not allowed_pages %}
-    <div class="card" style="display:flex;flex-direction:column;margin-bottom:0;min-height:120px;">
-        <div style="font-size:14px;font-weight:600;margin-bottom:6px;">暂无可用功能</div>
-        <p style="color:var(--text-2);font-size:13px;flex:1;">请以有效角色登录后查看可用功能入口。</p>
-        <a class="btn" href="/login" style="margin-top:16px;align-self:flex-start;">前往登录</a>
+    <div class="card entry-card">
+        <div class="entry-ic ic-blue">{{ icon('user', 22) }}</div>
+        <div class="entry-t">暂无可用功能</div>
+        <div class="entry-d">请以有效角色登录后查看可用功能入口。</div>
+        <a class="btn btn-sm" href="/login">前往登录</a>
     </div>
     {% endif %}
 </div>
 
-{% if current_user and current_user.role=='student' %}
-<!-- 学生：闭环使用指引 -->
+<!-- 底部卡片 -->
+{% if role=='student' %}
 <div class="card">
     <div class="card-title">问题处理流程</div>
     <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;font-size:13px;color:var(--text-2);">
-        <span class="tag tag-blue">① 向 AI 辅导员提问</span><span style="color:var(--text-3);">→</span>
-        <span class="tag tag-blue">② AI 无法解答自动生成工单</span><span style="color:var(--text-3);">→</span>
-        <span class="tag tag-blue">③ 对应辅导员在线回复</span><span style="color:var(--text-3);">→</span>
-        <span class="tag tag-green">④ 你确认解决后结单</span>
+        <span class="chip">① 向 AI 辅导员提问</span><span style="color:var(--text-3);">→</span>
+        <span class="chip">② 无法解答自动生成工单</span><span style="color:var(--text-3);">→</span>
+        <span class="chip">③ 辅导员工单内回复</span><span style="color:var(--text-3);">→</span>
+        <span class="chip">④ 你继续追问 / 确认结单</span>
     </div>
-    <p style="color:var(--text-3);font-size:12px;margin-top:10px;">辅导员回复后会在『在线咨询』的「我的工单」中自动刷新显示，无需反复刷新页面。</p>
+    <p style="color:var(--text-3);font-size:12px;margin-top:12px;">辅导员回复后会在「在线咨询」的「我的工单」中自动刷新显示；每轮往来记录都会保留，可随时回看。</p>
 </div>
-{% elif counselor_view not in ('building', 'teacher') %}
+{% elif cv not in ('building', 'teacher') %}
 <div class="card">
-    <div class="card-title">能力清单</div>
+    <div class="card-title">平台能力清单</div>
     <div style="display:flex;flex-wrap:wrap;gap:8px;">
         <span class="tag tag-blue">大模型语义客服（离线自动降级）</span>
-        <span class="tag tag-blue">工单闭环流转</span>
+        <span class="tag tag-blue">工单多轮对话闭环</span>
         <span class="tag tag-green">IoT + 视觉双通道违规检测</span>
         <span class="tag tag-green">逐宿舍能耗监控</span>
         <span class="tag tag-green">辅导员风险告警闭环</span>
