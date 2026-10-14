@@ -29,22 +29,30 @@
                         <b style="color:#92400e;">{{ t.student_desc }}</b>
                         {% if t.status == 'resolved' %}
                         <span class="tag tag-green">已结案</span>
-                        {% elif (t.reply or '').strip() %}
+                        {% elif t.last_sender in ('counselor', 'admin') %}
                         <span class="tag" style="background:#e0f2fe;color:#0369a1;">已答复</span>
                         {% else %}
                         <span class="tag tag-amber">待处理</span>
                         {% endif %}
                     </div>
                     <div style="font-size:12px;color:var(--text-3);margin-top:4px;">{{ t.id }} · {{ t.created_at }}{% if t.student_id %} · 学号 {{ t.student_id }}{% endif %}</div>
-                    {% if (t.reply or '').strip() %}
-                    <div style="margin-top:6px;padding:8px 10px;background:#eff6ff;border-radius:6px;color:#1e40af;">
-                        <b style="font-size:12px;">我的回复（{{ t.replied_at }}）：</b><br>{{ t.reply }}
+                    {# 对话记录：学生提问/追问与辅导员回复的完整往来，按时间正序 #}
+                    <div style="margin-top:8px;">
+                        {% for m in t.messages %}
+                        {% set mine = (m.sender == 'counselor') %}
+                        <div style="padding:7px 10px;border-radius:6px;font-size:13px;margin-bottom:6px;{{ 'background:#eff6ff;border-left:3px solid #2f54eb;' if mine else 'background:#f8fafc;border-left:3px solid #94a3b8;' }}">
+                            <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+                                <b style="font-size:12px;color:{{ '#1d4ed8' if mine else '#475569' }};">{{ '我' if mine else (m.sender_name or '学生') }}</b>
+                                <span style="font-size:11px;color:var(--text-3);">{{ m.created_at }}</span>
+                            </div>
+                            <div style="margin-top:2px;">{{ m.content }}</div>
+                        </div>
+                        {% endfor %}
                     </div>
-                    {% endif %}
                     {% if t.status != 'resolved' %}
                     <div style="margin-top:8px;display:flex;gap:8px;">
-                        <input type="text" id="reply-{{ t.id }}" value="{{ t.reply or '' }}"
-                               placeholder="{{ '修改处理意见…' if (t.reply or '').strip() else '填写处理意见后提交回复…' }}"
+                        <input type="text" id="reply-{{ t.id }}"
+                               placeholder="输入回复（追加到对话记录，学生可继续追问）…"
                                style="flex:1;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;outline:none;">
                         <button class="btn" style="padding:8px 14px;font-size:13px;" onclick="workbenchReply('{{ t.id }}')">回复</button>
                     </div>
@@ -158,14 +166,30 @@
             <div id="tickets">
                 {% for t in tickets %}
                 <div style="border-left:3px solid var(--warning);background:#fffbeb;padding:10px 12px;border-radius:6px;font-size:13px;margin-bottom:10px;">
-                    <div><b style="color:#92400e;">{{ t.handler }}</b> <span class="tag {{ 'tag-green' if t.status=='resolved' else 'tag-amber' }}">{{ {'pending':'待处理','processing':'处理中','resolved':'已结案'}.get(t.status,t.status) }}</span></div>
-                    <div style="margin-top:4px;color:var(--text);">{{ t.student_desc }}</div>
-                    <div style="font-size:12px;color:var(--text-3);margin-top:4px;">{{ t.id }} · {{ t.created_at }}{% if t.student_id %} · 学号 {{ t.student_id }}{% endif %}</div>
-                    {% if (t.reply or '').strip() %}
-                    <div style="margin-top:6px;padding:8px 10px;background:#eff6ff;border-radius:6px;color:#1e40af;">
-                        <b style="font-size:12px;">辅导员回复（{{ t.replied_at }}）：</b><br>{{ t.reply }}
+                    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+                        <b style="color:#92400e;">{{ t.handler }}</b>
+                        {% if t.status == 'resolved' %}
+                        <span class="tag tag-green">已结案</span>
+                        {% elif t.last_sender in ('counselor', 'admin') %}
+                        <span class="tag" style="background:#e0f2fe;color:#0369a1;">辅导员已回复</span>
+                        {% else %}
+                        <span class="tag tag-amber">等待辅导员回复</span>
+                        {% endif %}
                     </div>
-                    {% endif %}
+                    <div style="font-size:12px;color:var(--text-3);margin-top:4px;">{{ t.id }} · {{ t.created_at }}{% if t.student_id %} · 学号 {{ t.student_id }}{% endif %}</div>
+                    {# 对话记录：学生提问/追问与辅导员回复的完整往来（可继续追问，记录不丢失） #}
+                    <div style="margin-top:8px;">
+                        {% for m in t.messages %}
+                        {% set mine = (m.sender == 'student') if (current_user and current_user.role == 'student') else (m.sender == 'admin') %}
+                        <div style="padding:7px 10px;border-radius:6px;font-size:13px;margin-bottom:6px;{{ 'background:#eff6ff;border-left:3px solid #2f54eb;' if mine else 'background:#f8fafc;border-left:3px solid #94a3b8;' }}">
+                            <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+                                <b style="font-size:12px;color:{{ '#1d4ed8' if mine else '#475569' }};">{{ '我' if mine else (m.sender_name or ('学生' if m.sender == 'student' else '辅导员')) }}</b>
+                                <span style="font-size:11px;color:var(--text-3);">{{ m.created_at }}</span>
+                            </div>
+                            <div style="margin-top:2px;">{{ m.content }}</div>
+                        </div>
+                        {% endfor %}
+                    </div>
                     {% if t.status != 'resolved' and current_user and current_user.role in ('counselor','admin') %}
                     <div style="margin-top:8px;display:flex;gap:8px;">
                         <input type="text" id="reply-{{ t.id }}" placeholder="填写处理意见后提交回复…" style="flex:1;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;outline:none;">
@@ -173,6 +197,12 @@
                     </div>
                     {% endif %}
                     {% if t.status != 'resolved' and current_user and current_user.role in ('student','admin') %}
+                    <div style="margin-top:8px;display:flex;gap:8px;">
+                        <input type="text" id="ask-{{ t.id }}" placeholder="继续追问（辅导员会看到并回复）…"
+                               style="flex:1;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;outline:none;"
+                               onkeydown="if(event.key==='Enter')askTicket('{{ t.id }}')">
+                        <button class="btn" style="padding:8px 14px;font-size:13px;" onclick="askTicket('{{ t.id }}')">追问</button>
+                    </div>
                     <div style="margin-top:8px;display:flex;gap:8px;align-items:center;">
                         <button class="btn" id="resolve-btn-{{ t.id }}" style="padding:8px 14px;font-size:13px;background:#16a34a;" onclick="resolveTicket('{{ t.id }}')">我的问题已解决（结单）</button>
                         <span style="font-size:12px;color:var(--text-3);">确认辅导员已处理完毕，可结单。</span>
@@ -180,7 +210,7 @@
                     {% endif %}
                 </div>
                 {% else %}
-                <p style="color:var(--text-3);font-size:13px;">{% if current_user and current_user.role=='student' %}暂无工单。当 AI 无法自动处理你的问题时，会在此生成工单并流转给对应辅导员；辅导员回复后会自动显示在这里。{% else %}暂无工单。学生咨询无法自动处理时会在此生成工单。{% endif %}</p>
+                <p style="color:var(--text-3);font-size:13px;">{% if current_user and current_user.role=='student' %}暂无工单。当 AI 无法自动处理你的问题时，会在此生成工单并流转给对应辅导员；辅导员回复后自动显示，你也可继续追问。{% else %}暂无工单。学生咨询无法自动处理时会在此生成工单。{% endif %}</p>
                 {% endfor %}
             </div>
         </div>
@@ -316,6 +346,24 @@
             if (!r.ok) { toast(data.error || '回复失败', false); return; }
             location.reload();
         } catch(e) { toast('回复失败：' + e.message, false); }
+    }
+    // 学生/管理员：对未结案工单继续追问（追加到对话记录，辅导员可在工作台继续答复）
+    async function askTicket(tid) {
+        const input = document.getElementById('ask-' + tid);
+        const content = input ? input.value.trim() : '';
+        if (!content) { toast('请先填写追问内容', false); return; }
+        try {
+            const r = await fetch('/api/tickets/' + tid + '/ask', {
+                method: 'POST',
+                headers: {'Content-Type':'application/json', 'X-CSRF-Token':'{{ csrf_token }}'},
+                body: JSON.stringify({content: content})
+            });
+            const data = await r.json();
+            if (!r.ok) { toast(data.error || '追问失败', false); return; }
+            input.value = '';
+            toast('追问已发送，辅导员会收到提醒', true);
+            refreshSidebar();
+        } catch(e) { toast('追问失败：' + e.message, false); }
     }
     // 学生/管理员：将工单结案——页内两段确认（不依赖原生 confirm，预览环境可用）
     async function resolveTicket(tid) {

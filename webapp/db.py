@@ -45,6 +45,16 @@ CREATE TABLE IF NOT EXISTS tickets (
     replied_at TEXT
 );
 
+-- 工单对话记录：学生提问/追问与辅导员回复按时间保留完整往来（人机协同的会话流）
+CREATE TABLE IF NOT EXISTS ticket_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticket_id TEXT NOT NULL,
+    sender TEXT NOT NULL,          -- student / counselor / admin
+    sender_name TEXT,              -- 显示名（学生 / 辅导员职责名 / 系统管理员）
+    content TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now', 'localtime'))
+);
+
 CREATE TABLE IF NOT EXISTS energy_alerts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     run_id TEXT,
@@ -137,6 +147,25 @@ def init_db():
     acols = {r[1] for r in conn.execute("PRAGMA table_info(energy_alerts)").fetchall()}
     if "run_id" not in acols:
         conn.execute("ALTER TABLE energy_alerts ADD COLUMN run_id TEXT")
+    # 老库迁移：把工单已有内容回填到对话记录（幂等：仅在缺失时插入）
+    # 1) 无任何消息的工单：学生原始提问作为首条消息
+    conn.execute(
+        """INSERT INTO ticket_messages (ticket_id, sender, sender_name, content, created_at)
+           SELECT t.id, 'student', '学生', t.student_desc, t.created_at
+           FROM tickets t
+           WHERE TRIM(COALESCE(t.student_desc, '')) != ''
+             AND NOT EXISTS (SELECT 1 FROM ticket_messages m WHERE m.ticket_id = t.id)"""
+    )
+    # 2) 已有回复但对话记录中没有工作人员消息的：回复补录为辅导员消息
+    conn.execute(
+        """INSERT INTO ticket_messages (ticket_id, sender, sender_name, content, created_at)
+           SELECT t.id, 'counselor', COALESCE(NULLIF(t.handler, ''), '辅导员'), t.reply,
+                  COALESCE(t.replied_at, t.created_at)
+           FROM tickets t
+           WHERE TRIM(COALESCE(t.reply, '')) != ''
+             AND NOT EXISTS (SELECT 1 FROM ticket_messages m
+                             WHERE m.ticket_id = t.id AND m.sender IN ('counselor', 'admin'))"""
+    )
     conn.commit()
     # 幂等写入默认 RBAC 账户：upstart（INSERT OR REPLACE on username）
     # 既补入新增账号(如楼栋辅导员)，也把已存在账号的口令/角色收敛到 seed 值，
@@ -238,30 +267,34 @@ def list_tickets(status: str | None = None, role: str = "", who: str = "",
                  bucket: str | None = None) -> list:
     """工单列表（支持工单状态桶过滤）。
 
-    bucket: None=全部；'open'=待处理(未结案且无回复)；'replied'=已答复(未结案已有回复)；
-            'resolved'=已结案。
+    bucket: None=全部；'open'=待处理(未结案且最后一条消息来自学生/尚无往来)；
+            'replied'=已答复(未结案且最后一条消息来自工作人员)；'resolved'=已结案。
+    每行附带 last_sender：对话记录最后一条消息的发送方（无记录时视为 student）。
     """
     conn = get_conn()
-    sql = "SELECT * FROM tickets WHERE 1=1"
+    # 最后一条对话消息的发送方（用于状态桶与"待处理/已答复"标签）
+    last_sender_sql = ("(SELECT m.sender FROM ticket_messages m "
+                       "WHERE m.ticket_id = t.id ORDER BY m.id DESC LIMIT 1)")
+    sql = f"SELECT t.*, {last_sender_sql} AS last_sender FROM tickets t WHERE 1=1"
     args = []
     if status:
-        sql += " AND status=?"
+        sql += " AND t.status=?"
         args.append(status)
-    # 按工单处理状态桶过滤
+    # 按工单处理状态桶过滤：以对话记录的最后发言方为准（学生追问后回到"待处理"）
     if bucket == "open":
-        sql += " AND status != 'resolved' AND (reply IS NULL OR TRIM(reply)='')"
+        sql += f" AND t.status != 'resolved' AND COALESCE({last_sender_sql}, 'student') = 'student'"
     elif bucket == "replied":
-        sql += " AND status != 'resolved' AND reply IS NOT NULL AND TRIM(reply)!=''"
+        sql += f" AND t.status != 'resolved' AND {last_sender_sql} IN ('counselor', 'admin')"
     elif bucket == "resolved":
-        sql += " AND status='resolved'"
+        sql += " AND t.status='resolved'"
     # 数据范围：student 只看自己，counselor 只看 callback 到自己职责的工单
     if role == "student" and who:
-        sql += " AND student_id=?"
+        sql += " AND t.student_id=?"
         args.append(who)
     elif role == "counselor" and who:
-        sql += " AND handler=?"
+        sql += " AND t.handler=?"
         args.append(who)
-    sql += " ORDER BY created_at DESC"
+    sql += " ORDER BY t.created_at DESC"
     rows = conn.execute(sql, args).fetchall()
     conn.close()
     return [dict(r) for r in rows]
@@ -274,9 +307,13 @@ def get_ticket(ticket_id: str) -> dict | None:
     return dict(row) if row else None
 
 
-def reply_ticket(ticket_id: str, reply: str, handler: str = "", status: str = "processing") -> dict | None:
-    """辅导员回复工单：写入回复文本/时间，并将状态推进到 processing（已答复跟随处理）。
-    仅当工单流转对象（handler）与回复者身份一致时才允许更新（权限在路由层校验）。
+def reply_ticket(ticket_id: str, reply: str, handler: str = "", status: str = "processing",
+                 sender: str = "counselor", sender_name: str = "") -> dict | None:
+    """工作人员（辅导员/管理员）回复工单：在对话记录中追加一条消息，并更新回复摘要与状态。
+
+    - 对话记录保留全部往来（学生追问 - 辅导员回复可多轮往复，不再互相覆盖）；
+    - reply/replied_at 保留"最新一条工作人员回复"摘要（状态桶与列表展示用）；
+    - 仅允许未结案工单追加（已结案返回 None）；权限在路由层校验。
     返回更新后的工单 dict；未命中/已被结案则返回 None。
     """
     reply = (reply or "").strip()
@@ -285,17 +322,56 @@ def reply_ticket(ticket_id: str, reply: str, handler: str = "", status: str = "p
     conn = get_conn()
     rows = conn.execute(
         """UPDATE tickets
-           SET reply=?, replied_at=datetime('now','localtime'), status=?, resolution=?
+           SET reply=?, replied_at=datetime('now','localtime'), status=?
            WHERE id=? AND status != 'resolved'""",
-        (reply, status, reply, ticket_id),
+        (reply, status, ticket_id),
     )
-    conn.commit()
     if rows.rowcount == 0:
         conn.close()
         return None
+    conn.execute(
+        """INSERT INTO ticket_messages (ticket_id, sender, sender_name, content)
+           VALUES (?,?,?,?)""",
+        (ticket_id, sender, sender_name or handler or "辅导员", reply),
+    )
+    conn.commit()
     row = conn.execute("SELECT * FROM tickets WHERE id=?", (ticket_id,)).fetchone()
     conn.close()
     return dict(row) if row else None
+
+
+def add_ticket_message(ticket_id: str, sender: str, content: str, sender_name: str = "") -> dict | None:
+    """向未结案工单追加一条对话消息（学生继续提问/追问、或工作人员补充说明）。
+
+    返回新增消息 dict；工单不存在或已结案时返回 None（空内容同样返回 None）。
+    """
+    content = (content or "").strip()
+    if not content:
+        return None
+    conn = get_conn()
+    t = conn.execute("SELECT status FROM tickets WHERE id=?", (ticket_id,)).fetchone()
+    if not t or t["status"] == "resolved":
+        conn.close()
+        return None
+    cur = conn.execute(
+        """INSERT INTO ticket_messages (ticket_id, sender, sender_name, content)
+           VALUES (?,?,?,?)""",
+        (ticket_id, sender, sender_name or ("学生" if sender == "student" else "辅导员"), content),
+    )
+    conn.commit()
+    row = conn.execute("SELECT * FROM ticket_messages WHERE id=?", (cur.lastrowid,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def list_ticket_messages(ticket_id: str) -> list:
+    """某工单的完整对话记录（按时间正序）。"""
+    conn = get_conn()
+    rows = conn.execute(
+        "SELECT * FROM ticket_messages WHERE ticket_id=? ORDER BY id ASC", (ticket_id,)
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
 
 
 def list_energy_alerts(limit: int = 50) -> list:

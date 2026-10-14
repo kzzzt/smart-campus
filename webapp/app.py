@@ -286,6 +286,13 @@ def _guard():
             if path.startswith("/api/tickets/") and path.endswith("/reply"):
                 if role not in ("counselor", "admin"):
                     return jsonify({"error": "当前角色无工单回复权限"}), 403
+            # 工单追问：学生对本人工单继续提问（管理员可代学生操作，权限在路由内二次校验）
+            if path.startswith("/api/tickets/") and path.endswith("/ask"):
+                if role not in ("student", "admin"):
+                    return jsonify({"error": "当前角色无法追问工单"}), 403
+                if not _csrf_ok():
+                    return jsonify({"error": "CSRF 校验失败"}), 403
+                return
             # 排课求解：仅管理员（辅导员不再具备排课权限）
             if path == "/api/schedule/run" and role != "admin":
                 return jsonify({"error": "仅管理人员可排课"}), 403
@@ -353,8 +360,9 @@ def ai_page():
         h = u["handler"]
         all_mine = db.list_tickets(role="counselor", who=h)
         counts = {
-            "open": len([t for t in all_mine if t["status"] != "resolved" and not (t.get("reply") or "").strip()]),
-            "replied": len([t for t in all_mine if t["status"] != "resolved" and (t.get("reply") or "").strip()]),
+            # 以对话记录最后发言方为准：最后是学生（或尚无往来）= 待处理；最后是工作人员 = 已答复
+            "open": len([t for t in all_mine if t["status"] != "resolved" and t.get("last_sender") in (None, "student")]),
+            "replied": len([t for t in all_mine if t["status"] != "resolved" and t.get("last_sender") in ("counselor", "admin")]),
             "resolved": len([t for t in all_mine if t["status"] == "resolved"]),
         }
         tbucket = request.args.get("tbucket") or "open"
@@ -373,6 +381,9 @@ def ai_page():
             energy_notices = [n for n in all_notices if not n.get("acknowledged")]
 
     tickets = db.list_tickets(role=role, who=who, bucket=tbucket)
+    # 为每张工单加载完整对话记录（学生提问/追问与辅导员回复的往来，按时间正序）
+    for t in tickets:
+        t["messages"] = db.list_ticket_messages(t["id"])
     return render_template(
         "ai.html",
         conversations=recent, tickets=tickets,
@@ -475,6 +486,8 @@ def api_chat():
             student_id=student_id,
         )
         db.save_ticket(t)
+        # 对话记录：学生原始提问作为首条消息（此后学生可继续追问、辅导员回复按时间保留）
+        db.add_ticket_message(t.ticket_id, "student", t.student_desc, sender_name="学生")
         result["ticket"]["status"] = "processing"
     return jsonify(result)
 
@@ -575,8 +588,8 @@ def api_resolve(tid):
 
 @app.route("/api/tickets/<tid>/reply", methods=["POST"])
 def api_reply(tid):
-    """辅导员回复工单：将处理意见写入工单，并推进状态为 processing（已答复）。
-    - 管理员可回复任意工单；
+    """工作人员回复工单：在对话记录中追加一条回复（保留全部往来记录），状态推进为 processing（已答复）。
+    - 管理员可回复任意工单（记为管理员消息）；
     - 辅导员仅能回复流转到自己职责（handler 匹配）的工单。
     """
     u = _current_user()
@@ -590,10 +603,39 @@ def api_reply(tid):
         return jsonify({"error": "工单不存在"}), 404
     if u and u["role"] == "counselor" and rec["handler"] != (u.get("handler") or ""):
         return jsonify({"error": "仅可回复流转到本人职责的工单"}), 403
-    updated = db.reply_ticket(tid, reply)
+    if u and u["role"] == "admin":
+        sender, sender_name = "admin", (u.get("display_name") or "系统管理员")
+    else:
+        sender, sender_name = "counselor", ((u.get("handler") if u else "") or "辅导员")
+    updated = db.reply_ticket(tid, reply, sender=sender, sender_name=sender_name)
     if not updated:
         return jsonify({"error": "该工单已结案或不存在"}), 400
     return jsonify({"ok": True, "ticket": updated})
+
+
+@app.route("/api/tickets/<tid>/ask", methods=["POST"])
+def api_ask(tid):
+    """学生对本人未结案工单继续提问/追问：追加到对话记录，辅导员可在工作台继续答复。
+    - 学生仅能对本人发起的工单追问（按学号校验）；管理员可代学生追问；
+    - 已结案工单不可再追问（可发起新咨询）。
+    """
+    u = _current_user()
+    data = request.get_json(force=True) or {}
+    content = (data.get("content") or "").strip()
+    if not content:
+        return jsonify({"error": "追问内容不能为空"}), 400
+    rec = db.get_ticket(tid)
+    if not rec:
+        return jsonify({"error": "工单不存在"}), 404
+    if rec["status"] == "resolved":
+        return jsonify({"error": "工单已结案，无法继续追问（可重新发起咨询）"}), 400
+    if u and u["role"] == "student":
+        if (rec.get("student_id") or "") != (u.get("student_id") or ""):
+            return jsonify({"error": "仅可追问自己发起的工单"}), 403
+    msg = db.add_ticket_message(tid, "student", content, sender_name="学生")
+    if not msg:
+        return jsonify({"error": "追问失败：工单已结案或不存在"}), 400
+    return jsonify({"ok": True, "message": msg})
 
 
 @app.route("/api/notices/<int:nid>/handle", methods=["POST"])

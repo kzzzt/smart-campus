@@ -428,3 +428,75 @@ def test_student_resolve_button_interaction_ready(client):
     assert "再次点击确认结单" in html      # 页内二次确认文案
     assert "confirm(" not in html          # 不依赖原生弹窗
     assert "alert(" not in html
+
+
+# ---------------- 工单多轮对话（学生追问 - 辅导员继续答复，记录保留） ----------------
+
+def test_ticket_multi_round_conversation(client):
+    """工单对话闭环：学生提问 → 辅导员回复 → 学生追问（回待处理）→ 辅导员再答；记录完整保留可查。"""
+    # ① 学生提问生成工单（对话记录含首条学生消息）
+    _login_as(client, "student", "stu123")
+    tok = _csrf_from_session(client)
+    client.post("/api/chat", json={"message": "我寝室插座坏了找谁？"},
+                headers={"X-CSRF-Token": tok})
+    tid = db.list_tickets(role="", who="")[0]["id"]
+    msgs = db.list_ticket_messages(tid)
+    assert len(msgs) == 1 and msgs[0]["sender"] == "student"
+
+    # ② 辅导员回复 → 工单进"已答复"桶
+    client.post("/logout")
+    _login_as(client, "counselor", "cou123")
+    tok2 = _csrf_from_session(client)
+    assert client.post(f"/api/tickets/{tid}/reply", json={"reply": "已联系后勤，明天上午上门"},
+                       headers={"X-CSRF-Token": tok2}).status_code == 200
+    assert tid in [t["id"] for t in db.list_tickets(role="counselor", who="综合事务辅导员", bucket="replied")]
+
+    # ③ 学生继续追问 → 回到"待处理"桶（辅导员工作台可见提醒）
+    client.post("/logout")
+    _login_as(client, "student", "stu123")
+    tok3 = _csrf_from_session(client)
+    assert client.post(f"/api/tickets/{tid}/ask", json={"content": "师傅几点来？"},
+                       headers={"X-CSRF-Token": tok3}).status_code == 200
+    assert tid in [t["id"] for t in db.list_tickets(role="counselor", who="综合事务辅导员", bucket="open")]
+
+    # ④ 辅导员继续回答；完整往来（4 条）保留，学生页可见且可继续追问
+    client.post("/logout")
+    _login_as(client, "counselor", "cou123")
+    tok4 = _csrf_from_session(client)
+    client.post(f"/api/tickets/{tid}/reply", json={"reply": "10 点到"},
+                headers={"X-CSRF-Token": tok4})
+    msgs = db.list_ticket_messages(tid)
+    assert [m["sender"] for m in msgs] == ["student", "counselor", "student", "counselor"]
+    client.post("/logout")
+    _login_as(client, "student", "stu123")
+    html = client.get("/ai").get_data(as_text=True)
+    assert "师傅几点来？" in html and "10 点到" in html
+    assert 'id="ask-' in html
+
+
+def test_ask_permission_guards(client):
+    """追问权限：学生不能追问他人工单（403）；已结案工单不可再追问（400）。"""
+    # 管理员以 20230002 生成工单
+    _login_as(client, "admin", "SmartCampus@2026")
+    tok = _csrf_from_session(client)
+    client.post("/api/chat", json={"message": "帮忙查一下补办学生证流程？", "student_id": "20230002"},
+                headers={"X-CSRF-Token": tok})
+    tid = db.list_tickets(role="", who="")[0]["id"]
+    client.post("/logout")
+
+    # 学生 20230001 追问他人工单 -> 403
+    _login_as(client, "student", "stu123")
+    tok2 = _csrf_from_session(client)
+    r = client.post(f"/api/tickets/{tid}/ask", json={"content": "追问"},
+                    headers={"X-CSRF-Token": tok2})
+    assert r.status_code == 403
+
+    # 结案后追问 -> 400
+    client.post("/logout")
+    _login_as(client, "admin", "SmartCampus@2026")
+    tok3 = _csrf_from_session(client)
+    client.post(f"/api/tickets/{tid}/resolve", json={"resolution": "ok"},
+                headers={"X-CSRF-Token": tok3})
+    r = client.post(f"/api/tickets/{tid}/ask", json={"content": "再问"},
+                    headers={"X-CSRF-Token": tok3})
+    assert r.status_code == 400
