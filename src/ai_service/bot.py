@@ -88,7 +88,8 @@ class CampusAIBot:
             if student_id:
                 slots["student_id"] = student_id
             ticket = self.tickets.create(
-                intent=u["intent"], student_desc=student_desc, slots=slots
+                intent=u["intent"], student_desc=student_desc,
+                slots=slots, student_id=student_id,
             )
             self.tickets.flow(ticket.ticket_id)
             return {

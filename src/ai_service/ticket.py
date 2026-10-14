@@ -31,12 +31,18 @@ class Ticket:
     status: str = "pending"          # pending / processing / resolved
     created_at: str = ""
     resolution: Optional[str] = None
+    student_id: str = ""             # 发起学生学号（学生端自己工单追踪/结单用）
 
     def __post_init__(self):
         if not self.handler:
             self.handler = INTENT_TO_HANDLER.get(self.intent, "综合事务辅导员")
         if not self.created_at:
             self.created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        if not self.student_id:
+            sid = ""
+            if isinstance(self.slots, dict):
+                sid = str(self.slots.get("student_id", "") or "")
+            self.student_id = sid
 
 
 class TicketSystem:
@@ -45,7 +51,8 @@ class TicketSystem:
     def __init__(self):
         self.tickets: list[Ticket] = []
 
-    def create(self, intent: str, student_desc: str, slots: dict) -> Ticket:
+    def create(self, intent: str, student_desc: str, slots: dict,
+               student_id: str = "") -> Ticket:
         # 唯一工单 ID：日期 + 短 UUID，避免跨重启/同进程重复被 INSERT OR REPLACE 静默覆盖
         ticket_id = f"TK-{datetime.now():%Y%m%d}-{uuid.uuid4().hex[:8]}"
         t = Ticket(
@@ -53,6 +60,7 @@ class TicketSystem:
             intent=intent,
             student_desc=student_desc,
             slots=slots,
+            student_id=student_id or (slots or {}).get("student_id", ""),
         )
         self.tickets.append(t)
         return t

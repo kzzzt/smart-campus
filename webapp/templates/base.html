@@ -83,7 +83,7 @@
             <nav class="nav">
                 <a href="/" class="{{ 'active' if request.path=='/' else '' }}">工作台</a>
                 {% for p in allowed_pages %}
-                <a href="{{ p }}" class="{{ 'active' if request.path==p else '' }}">{{ {'/ai':'智能客服','/energy':'能耗监控','/scheduler':'排课管理'}[p] }}</a>
+                <a href="{{ p }}" class="{{ 'active' if request.path==p else '' }}">{{ nav_labels.get(p, p) }}</a>
                 {% endfor %}
             </nav>
             <div class="user-area">

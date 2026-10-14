@@ -26,7 +26,7 @@ from flask import Flask, render_template, request, jsonify, redirect, url_for, s
 
 from webapp import db
 from src.ai_service.bot import CampusAIBot
-from src.energy.simulator import PowerySimulator
+from src.energy.simulator import PowerySimulator, HANDLER_BY_BUILDING
 from src.energy.detector import detect, summarize_rooms, build_notices
 from src.energy.forecast import forecast_peak
 from src.scheduler.constraints import Course, Room
@@ -47,6 +47,18 @@ ROLE_PAGES = {
     "counselor": ["/ai", "/energy", "/scheduler"],            # 辅导员：AI 客服 + 查看对应宿舍能耗与本人课程排课（只读，运行/求解归管理员）
     "admin": ["/ai", "/energy", "/scheduler"],                # 管理人员：全部（含排课求解/能耗采集分析）
 }
+
+# 导航标签按角色定制（同一页面在不同角色下的称谓不同）
+NAV_LABELS = {
+    "student": {"/ai": "在线咨询"},
+    "counselor": {"/ai": "辅导员工作台", "/energy": "宿舍能耗", "/scheduler": "我的课表"},
+    "admin": {"/ai": "智能客服", "/energy": "能耗监控", "/scheduler": "排课管理"},
+}
+
+# 楼栋辅导员名单（与模拟数据的楼栋映射共用同一来源，保证数据范围判断一致）
+BUILDING_HANDLERS = set(HANDLER_BY_BUILDING.values())
+# 排课演示课程的授课教师名单（用于识别"教师视角"辅导员，避免尚无排课数据时误判为无职责）
+DEMO_TEACHERS = ("张老师", "李老师", "王老师", "赵老师", "孙老师", "周老师")
 # 兼容引用（学生不再只读浏览能耗/排课，置空）
 READ_ONLY_PAGES_FOR_STUDENT = []
 # 默认演示账户（不覆盖时用）——首启初始化到 users 表
@@ -235,10 +247,13 @@ def _guard():
                 if not _csrf_ok():
                     return jsonify({"error": "CSRF 校验失败"}), 403
                 return
-            # 工单结案：仅管理员
+            # 工单结案：管理人员可结任意；学生可结自己发起的工单（越权在路由内校验）
             if path.startswith("/api/tickets/") and path.endswith("/resolve"):
-                if role != "admin":
-                    return jsonify({"error": "仅管理人员可结案工单"}), 403
+                if role not in ("admin", "student"):
+                    return jsonify({"error": "当前角色无工单结案权限"}), 403
+                if not _csrf_ok():
+                    return jsonify({"error": "CSRF 校验失败"}), 403
+                return
             # 工单回复：辅导员（仅能回流转到自己职责的工单，权限在路由内按 handler 二次校验）或管理员
             if path.startswith("/api/tickets/") and path.endswith("/reply"):
                 if role not in ("counselor", "admin"):
@@ -272,6 +287,8 @@ def _inject_globals():
         "allowed_pages": sorted(allowed, key=lambda p: ["/ai", "/energy", "/scheduler"].index(p)) if allowed else [],
         "ROLES": ROLES,
         "ROLE_PAGES": ROLE_PAGES,
+        "NAV_LABELS": NAV_LABELS,
+        "nav_labels": NAV_LABELS.get(role, {}),
         "READ_ONLY_PAGES_FOR_STUDENT": READ_ONLY_PAGES_FOR_STUDENT,
     }
 
@@ -338,15 +355,28 @@ def energy_page():
     forecast = db.list_forecast()
     rooms = db.list_room_energy()
     notices = db.list_energy_notices()
-    # 辅导员：只看本人负责宿舍楼栋的能耗明细与告警（handler 匹配）
-    if u and u["role"] == "counselor" and u.get("handler"):
-        h = u["handler"]
-        rooms = [r for r in rooms if r["handler"] == h]
-        alerts = [a for a in alerts if a["room"] in {r["room"] for r in rooms}]
-        notices = [n for n in notices if n["handler"] == h]
+    # 数据范围三态：
+    #   own      - 楼栋辅导员（handler 与某楼栋匹配，或本身就是楼栋辅导员）：只看本人负责楼栋；
+    #   overview - 其他辅导员（如综合事务岗，无专属楼栋）：只读浏览全校总览；
+    #   all      - 管理人员/访客：全校（含采集/分析操作）。
+    scope = "all"
+    if u and u["role"] == "counselor":
+        h = u.get("handler") or ""
+        mine = [r for r in rooms if r["handler"] == h]
+        if mine:
+            rooms = mine
+            alerts = [a for a in alerts if a["room"] in {r["room"] for r in rooms}]
+            notices = [n for n in notices if n["handler"] == h]
+            scope = "own"
+        elif h in BUILDING_HANDLERS:
+            # 楼栋辅导员但尚未采集数据：保持"所管宿舍"专属视图（空态提示），不降级为总览
+            rooms, alerts, notices = [], [], []
+            scope = "own"
+        else:
+            scope = "overview"
     return render_template(
         "energy.html", alerts=alerts, forecast=forecast,
-        rooms=rooms, notices=notices,
+        rooms=rooms, notices=notices, energy_scope=scope,
     )
 
 
@@ -354,10 +384,24 @@ def energy_page():
 def scheduler_page():
     u = _current_user()
     schedule = db.list_schedules()
-    # 辅导员（教师视角）：只看与本人职责（教师名）相关的课程
-    if u and u["role"] == "counselor" and u.get("handler"):
-        schedule = [s for s in schedule if s["teacher"] == u["handler"]]
-    return render_template("scheduler.html", schedule=schedule)
+    # 数据范围三态：
+    #   own      - 教师视角辅导员（handler 与授课教师名匹配）：只看本人课程；
+    #   overview - 其他辅导员（无授课课程）：只读浏览全校课程总览；
+    #   all      - 管理人员/访客：全校（含求解操作）。
+    scope = "all"
+    if u and u["role"] == "counselor":
+        h = u.get("handler") or ""
+        mine = [s for s in schedule if s["teacher"] == h]
+        if mine:
+            schedule = mine
+            scope = "own"
+        elif h in DEMO_TEACHERS:
+            # 教师账号但尚无排课数据：保持"我的课表"专属视图（空态提示），不降级为总览
+            schedule = []
+            scope = "own"
+        else:
+            scope = "overview"
+    return render_template("scheduler.html", schedule=schedule, schedule_scope=scope)
 
 
 # ---------------- API ----------------
@@ -394,6 +438,7 @@ def api_chat():
             slots=result["ticket"]["slots"],
             handler=result["ticket"]["handler"],
             status="processing",
+            student_id=student_id,
         )
         db.save_ticket(t)
         result["ticket"]["status"] = "processing"
@@ -410,7 +455,7 @@ def api_energy_run():
     full = detect(records, use_vision=True)  # 双通道：IoT功率规则 + 智算视觉复核
     run_id = f"E{datetime.now():%Y%m%d%H%M%S}-{uuid.uuid4().hex[:4]}"
     for a in full["rule_alarms"]:
-        db.save_energy_alert(a)
+        db.save_energy_alert(a, run_id=run_id)
 
     # 逐宿舍能耗汇总 + 高能耗通知对应辅导员
     room_rows = summarize_rooms(records)
@@ -473,8 +518,16 @@ def api_tickets():
 
 @app.route("/api/tickets/<tid>/resolve", methods=["POST"])
 def api_resolve(tid):
-    data = request.get_json(force=True)
-    resolution = data.get("resolution", "已处理")
+    data = request.get_json(force=True) or {}
+    resolution = (data.get("resolution") or "已处理").strip() or "已处理"
+    u = _current_user()
+    if u and u["role"] == "student":
+        # 学生只能结自己发起的工单：按学号匹配工单记录
+        rec = db.get_ticket(tid)
+        if not rec:
+            return jsonify({"error": "工单不存在"}), 404
+        if (rec.get("student_id") or "") != (u.get("student_id") or ""):
+            return jsonify({"error": "仅可结单自己发起的工单"}), 403
     # 更新数据库中的工单状态（已结案的不再重复结案）
     conn = db.get_conn()
     cur = conn.execute(

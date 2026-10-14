@@ -187,7 +187,7 @@ def test_counselor_sees_only_own_tickets(client):
 
 
 def test_admin_resolves_ticket_only(client):
-    """工单结案仅管理员；辅导员/学生被拒。"""
+    """管理人员可结案任意工单；辅导员不能结案他人工单（403）。"""
     _login_as(client, "admin", "SmartCampus@2026")
     tok = _csrf_from_session(client)
     client.post(
@@ -208,7 +208,51 @@ def test_admin_resolves_ticket_only(client):
                        headers={"X-CSRF-Token": tok2}).status_code == 403
 
 
-def test_student_cannot_resolve(client):
+def test_student_can_resolve_own_ticket(client):
+    """学生可结单自己发起的工单；不能结单他人（不同学号）的工单。"""
+    # 学生发起工单（学号 20230001）
+    _login_as(client, "student", "stu123")
+    tok = _csrf_from_session(client)
+    client.post(
+        "/api/chat",
+        json={"message": "我寝室插座坏了找谁？", "student_id": "20230001"},
+        headers={"X-CSRF-Token": tok},
+    )
+    mine = db.list_tickets(role="student", who="20230001")
+    assert mine, "学生应能通过学号看到自己的工单"
+    tid = mine[0]["id"]
+    # 学生可结单自己工单
+    assert client.post(f"/api/tickets/{tid}/resolve", json={"resolution": "已解决"},
+                       headers={"X-CSRF-Token": tok}).status_code == 200
+    got = db.get_ticket(tid)
+    assert got["status"] == "resolved"
+
+
+def test_student_cannot_resolve_others_ticket(client):
+    """学生不能结单他人学号的工单（越权 403）。"""
+    # 管理员以 20230002 发起他人工单
+    _login_as(client, "admin", "SmartCampus@2026")
+    tok = _csrf_from_session(client)
+    client.post(
+        "/api/chat",
+        json={"message": "我寝室插座坏了找谁？", "student_id": "20230002"},
+        headers={"X-CSRF-Token": tok},
+    )
+    all_tickets = db.list_tickets(role="", who="")
+    assert all_tickets
+    tid = all_tickets[0]["id"]
+    client.post("/logout")
+
+    # 学生 20230001 尝试结单 20230002 的工单 -> 403
+    _login_as(client, "student", "stu123")
+    tok2 = _csrf_from_session(client)
+    assert client.post(f"/api/tickets/{tid}/resolve", json={"resolution": "x"},
+                       headers={"X-CSRF-Token": tok2}).status_code == 403
+
+
+def test_student_sees_own_ticket_and_reply(client):
+    """学生端：能看到辅导员回复（闭环）——发起工单后辅导员回复，学生工单含 reply。"""
+    # 管理员（或辅导员）发起工单，辅导员回复
     _login_as(client, "admin", "SmartCampus@2026")
     tok = _csrf_from_session(client)
     client.post(
@@ -216,14 +260,21 @@ def test_student_cannot_resolve(client):
         json={"message": "我寝室插座坏了找谁？", "student_id": "20230001"},
         headers={"X-CSRF-Token": tok},
     )
-    all_tickets = db.list_tickets(role="", who="")
-    assert all_tickets
-    tid = all_tickets[0]["id"]
+    tid = db.list_tickets(role="", who="")[0]["id"]
     client.post("/logout")
-    _login_as(client, "student", "stu123")
+    _login_as(client, "counselor", "cou123")
     tok2 = _csrf_from_session(client)
-    assert client.post(f"/api/tickets/{tid}/resolve", json={"resolution": "x"},
-                       headers={"X-CSRF-Token": tok2}).status_code == 403
+    client.post(f"/api/tickets/{tid}/reply", json={"reply": "已派后勤维修，今晚处理"},
+                headers={"X-CSRF-Token": tok2})
+    client.post("/logout")
+
+    # 学生登录：能通过 /api/tickets 看到自己工单，且包含辅导员回复
+    _login_as(client, "student", "stu123")
+    mine = client.get("/api/tickets").get_json()
+    mine = [t for t in mine if t["id"] == tid]
+    assert mine, "学生应能看到自己发起的工单"
+    assert mine[0]["reply"] == "已派后勤维修，今晚处理"
+    assert mine[0]["status"] == "processing"
 
 
 def test_csrf_blocks_post_without_token(client):
@@ -269,3 +320,64 @@ def test_chat_and_ticket_flow(client):
     data = r.get_json()
     assert data["needs_human"] is True
     assert data["ticket"]["id"].startswith("TK-")
+
+
+# ---------------- 角色化界面与辅导员数据范围（总览兜底） ----------------
+
+def test_counselor_overview_sees_all_energy_and_schedule(client):
+    """综合事务辅导员（无专属楼栋/课程）：能耗与排课页展示全校总览，而非空数据。"""
+    _login_as(client, "admin", "SmartCampus@2026")
+    etok = _csrf_from(client, "/energy")
+    client.post("/api/energy/run", headers={"X-CSRF-Token": etok})
+    stok = _csrf_from(client, "/scheduler")
+    client.post("/api/schedule/run", headers={"X-CSRF-Token": stok})
+    client.post("/logout")
+
+    _login_as(client, "counselor", "cou123")
+    ehtml = client.get("/energy").get_data(as_text=True)
+    assert "宿舍能耗总览" in ehtml                                   # 总览态标题
+    assert "1号宿舍楼-101" in ehtml and "2号宿舍楼-201" in ehtml       # 能看到两个楼栋
+    assert 'id="runBtn"' not in ehtml                                # 仍无采集按钮（只读）
+    shtml = client.get("/scheduler").get_data(as_text=True)
+    assert "课程总览" in shtml
+    assert "数据结构" in shtml and "大学英语" in shtml                 # 全校课程可见
+    assert 'id="runBtn"' not in shtml                                # 无求解按钮
+
+
+def test_building_counselor_keeps_own_scope(client):
+    """楼栋辅导员仍只看本人楼栋（隔离不被总览兜底破坏），标题为『所管宿舍能耗』。"""
+    _login_as(client, "admin", "SmartCampus@2026")
+    etok = _csrf_from(client, "/energy")
+    client.post("/api/energy/run", headers={"X-CSRF-Token": etok})
+    client.post("/logout")
+
+    _login_as(client, "f1", "cou123")
+    html = client.get("/energy").get_data(as_text=True)
+    assert "所管宿舍能耗" in html
+    assert "1号宿舍楼-" in html
+    assert "2号宿舍楼-" not in html
+
+
+def test_role_based_nav_labels(client):
+    """导航标签按角色定制：学生=在线咨询 / 辅导员=辅导员工作台 / 管理=能耗监控。"""
+    _login_as(client, "student", "stu123")
+    assert "在线咨询" in client.get("/ai").get_data(as_text=True)
+    client.post("/logout")
+    _login_as(client, "counselor", "cou123")
+    html = client.get("/ai").get_data(as_text=True)
+    assert "辅导员工作台" in html and "宿舍能耗" in html
+    client.post("/logout")
+    _login_as(client, "admin", "SmartCampus@2026")
+    html = client.get("/ai").get_data(as_text=True)
+    assert "能耗监控" in html and "排课管理" in html
+
+
+def test_student_ai_page_shows_own_tickets_and_auto_refresh(client):
+    """学生视角：工单区称『我的工单』且带自动刷新（辅导员回复自动可见）；管理员页无学生轮询。"""
+    _login_as(client, "student", "stu123")
+    html = client.get("/ai").get_data(as_text=True)
+    assert "我的工单" in html
+    assert "refreshSidebar" in html and "setInterval" in html
+    client.post("/logout")
+    _login_as(client, "admin", "SmartCampus@2026")
+    assert "}, 12000)" not in client.get("/ai").get_data(as_text=True)

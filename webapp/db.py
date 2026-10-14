@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS tickets (
 
 CREATE TABLE IF NOT EXISTS energy_alerts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id TEXT,
     room TEXT,
     ts TEXT,
     power_w REAL,
@@ -132,6 +133,10 @@ def init_db():
     ncols = {r[1] for r in conn.execute("PRAGMA table_info(energy_notices)").fetchall()}
     if "acknowledged" not in ncols:
         conn.execute("ALTER TABLE energy_notices ADD COLUMN acknowledged INTEGER DEFAULT 0")
+    # 老库迁移：告警表补充 run_id（与预测/宿舍能耗同一隔离机制，避免多次采集旧告警重复累积展示）
+    acols = {r[1] for r in conn.execute("PRAGMA table_info(energy_alerts)").fetchall()}
+    if "run_id" not in acols:
+        conn.execute("ALTER TABLE energy_alerts ADD COLUMN run_id TEXT")
     conn.commit()
     # 幂等写入默认 RBAC 账户：upstart（INSERT OR REPLACE on username）
     # 既补入新增账号(如楼栋辅导员)，也把已存在账号的口令/角色收敛到 seed 值，
@@ -173,18 +178,18 @@ def save_ticket(ticket) -> None:
         (ticket.ticket_id, ticket.intent, ticket.student_desc,
          json.dumps(ticket.slots, ensure_ascii=False),
          ticket.handler, ticket.status, ticket.resolution,
-         getattr(ticket, "student_id", None)),
+         getattr(ticket, "student_id", None) or (ticket.slots or {}).get("student_id")),
     )
     conn.commit()
     conn.close()
 
 
-def save_energy_alert(a: dict) -> None:
+def save_energy_alert(a: dict, run_id: str | None = None) -> None:
     conn = get_conn()
     conn.execute(
-        """INSERT INTO energy_alerts (room, ts, power_w, reason, confidence)
-           VALUES (?,?,?,?,?)""",
-        (a["room"], a["ts"].strftime("%Y-%m-%d %H:%M:%S"),
+        """INSERT INTO energy_alerts (run_id, room, ts, power_w, reason, confidence)
+           VALUES (?,?,?,?,?,?)""",
+        (run_id, a["room"], a["ts"].strftime("%Y-%m-%d %H:%M:%S"),
          a["power_w"], a["reason"], a.get("confidence", "medium")),
     )
     conn.commit()
@@ -295,8 +300,12 @@ def reply_ticket(ticket_id: str, reply: str, handler: str = "", status: str = "p
 
 def list_energy_alerts(limit: int = 50) -> list:
     conn = get_conn()
+    # 只返回最新一次采集的告警，避免多次运行的旧告警重复累积展示
     rows = conn.execute(
-        "SELECT * FROM energy_alerts ORDER BY id DESC LIMIT ?", (limit,)
+        """SELECT * FROM energy_alerts
+           WHERE run_id = (SELECT run_id FROM energy_alerts ORDER BY id DESC LIMIT 1)
+           ORDER BY id ASC LIMIT ?""",
+        (limit,),
     ).fetchall()
     conn.close()
     return [dict(r) for r in rows]

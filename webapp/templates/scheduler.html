@@ -1,26 +1,33 @@
 {% extends "base.html" %}
-{% block title %}排课管理 - 智慧校园管理平台{% endblock %}
+{% block title %}{{ {'own':'我的课表','overview':'课程总览'}.get(schedule_scope, '排课管理') }} - 智慧校园管理平台{% endblock %}
 {% block content %}
 <div class="page-head">
-    <h1>智能排课与教室调度</h1>
-    <p>遗传算法求解课程-时段-教室最优分配，满足教师/教室无冲突、容量充足、需电脑课程入机房等约束。</p>
+    <h1>{{ {'own':'我的课表','overview':'课程总览'}.get(schedule_scope, '智能排课与教室调度') }}</h1>
+    <p>
+        {%- if schedule_scope == 'own' -%}
+        展示你授课课程的时间 / 教室安排（只读查看）。
+        {%- elif schedule_scope == 'overview' -%}
+        你当前没有授课安排，以下为全校课程排课总览（只读）。
+        {%- else -%}
+        遗传算法求解课程-时段-教室最优分配，满足教师/教室无冲突、容量充足、需电脑课程入机房等约束。
+        {%- endif -%}
+    </p>
 </div>
 
+{% if schedule_scope == 'all' %}
 <div class="card">
     <div class="card-title">求解排课</div>
     <p class="card-sub" style="max-width:860px;">
         本次使用遗传算法（种群 30 × 迭代 100 代）求解课程-时段-教室的最优分配：满足硬约束（教师 / 教室无冲突、容量足够、需电脑的课入机房）
-        并优化软约束（教室类型 / 容量匹配度）。
-        {% if current_user and current_user.role=='admin' %}点击下方按钮触发求解（仅管理人员可操作）。{% elif current_user and current_user.role=='counselor' %}您为辅导员，可查看本人相关课程排课，求解功能仅管理人员可操作。{% else %}点击下方按钮触发求解。{% endif %}
+        并优化软约束（教室类型 / 容量匹配度）。点击下方按钮触发求解（仅管理人员可操作）。
     </p>
-    {% if not current_user or current_user.role == 'admin' %}
     <button class="btn" id="runBtn" onclick="runSchedule()">重新求解排课</button>
-    {% endif %}
     <div id="result" style="margin-top:14px;"></div>
 </div>
+{% endif %}
 
 <div class="card">
-    <div class="card-title">当前排课方案</div>
+    <div class="card-title">{{ {'own':'我的课表','overview':'全校课程总览'}.get(schedule_scope, '当前排课方案') }}</div>
     <div class="table-wrap">
         <table>
             <thead><tr><th>时段</th><th>课程</th><th>教师</th><th>教室</th><th>类型</th></tr></thead>
@@ -34,7 +41,7 @@
                     <td><span class="tag {{ 'tag-purple' if s.room_type=='computer' else 'tag-green' if s.room_type=='lab' else 'tag-gray' }}">{{ '机房' if s.room_type=='computer' else '实验室' if s.room_type=='lab' else '普通教室' }}</span></td>
                 </tr>
                 {% else %}
-                <tr><td colspan="5" class="empty">暂无排课数据，点击上方按钮生成。</td></tr>
+                <tr><td colspan="5" class="empty">{% if schedule_scope == 'all' %}暂无排课数据，点击上方按钮生成。{% else %}暂无排课数据。排课方案由管理人员运行求解后更新。{% endif %}</td></tr>
                 {% endfor %}
             </tbody>
         </table>

@@ -17,17 +17,17 @@
             <div class="role-card" data-role="student" style="border:1px solid var(--border);border-radius:10px;padding:12px 8px;text-align:center;cursor:pointer;transition:all .15s;">
                 <div style="font-size:22px;">👨‍🎓</div>
                 <div style="font-weight:600;font-size:13px;margin-top:4px;">学生</div>
-                <div style="font-size:11px;color:var(--text-3);margin-top:2px;">AI 客服 / 只读</div>
+                <div style="font-size:11px;color:var(--text-3);margin-top:2px;">咨询答疑 / 工单跟踪</div>
             </div>
             <div class="role-card" data-role="counselor" style="border:1px solid var(--border);border-radius:10px;padding:12px 8px;text-align:center;cursor:pointer;transition:all .15s;">
                 <div style="font-size:22px;">👩‍🏫</div>
                 <div style="font-weight:600;font-size:13px;margin-top:4px;">辅导员</div>
-                <div style="font-size:11px;color:var(--text-3);margin-top:2px;">工单回复 / 只读查看</div>
+                <div style="font-size:11px;color:var(--text-3);margin-top:2px;">工单处理 / 能耗 / 课表</div>
             </div>
             <div class="role-card" data-role="admin" style="border:1px solid var(--border);border-radius:10px;padding:12px 8px;text-align:center;cursor:pointer;transition:all .15s;">
                 <div style="font-size:22px;">🛡️</div>
                 <div style="font-weight:600;font-size:13px;margin-top:4px;">管理人员</div>
-                <div style="font-size:11px;color:var(--text-3);margin-top:2px;">全部权限</div>
+                <div style="font-size:11px;color:var(--text-3);margin-top:2px;">全量管理与调度</div>
             </div>
         </div>
 
@@ -43,11 +43,33 @@
             <button type="submit" class="btn btn-block" style="padding:11px;">登 录</button>
         </form>
 
+        <div style="margin-top:16px;">
+            <div style="font-size:12px;color:var(--text-2);margin-bottom:8px;"><b>测试一键登录</b>（直接以该角色进入，无需输入账号密码）</div>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
+                <form method="POST" action="/login" style="margin:0;">
+                    <input type="hidden" name="username" value="{{ demo_accounts.student[0] }}">
+                    <input type="hidden" name="password" value="{{ demo_accounts.student[1] }}">
+                    <button type="submit" class="btn" style="width:100%;justify-content:center;background:#16a34a;padding:8px 0;font-size:13px;">学生进入</button>
+                </form>
+                <form method="POST" action="/login" style="margin:0;">
+                    <input type="hidden" name="username" value="{{ demo_accounts.counselor[0] }}">
+                    <input type="hidden" name="password" value="{{ demo_accounts.counselor[1] }}">
+                    <button type="submit" class="btn" style="width:100%;justify-content:center;background:#7e22ce;padding:8px 0;font-size:13px;">辅导员进入</button>
+                </form>
+                <form method="POST" action="/login" style="margin:0;">
+                    <input type="hidden" name="username" value="{{ demo_accounts.admin[0] }}">
+                    <input type="hidden" name="password" value="{{ demo_accounts.admin[1] }}">
+                    <button type="submit" class="btn" style="width:100%;justify-content:center;background:#2f54eb;padding:8px 0;font-size:13px;">管理员进入</button>
+                </form>
+            </div>
+        </div>
+
         <div style="margin-top:16px;font-size:12px;color:var(--text-3);line-height:2;">
             <b>演示账号：</b><br>
             学生 <b>{{ demo_accounts.student[0] }}</b> / {{ demo_accounts.student[1] }}<br>
-            辅导员 <b>{{ demo_accounts.counselor[0] }}</b> / {{ demo_accounts.counselor[1] }}<br>
-            管理人员 <b>{{ demo_accounts.admin[0] }}</b> / {{ demo_accounts.admin[1] }}
+            辅导员 <b>{{ demo_accounts.counselor[0] }}</b> / {{ demo_accounts.counselor[1] }}（综合事务岗）<br>
+            管理人员 <b>{{ demo_accounts.admin[0] }}</b> / {{ demo_accounts.admin[1] }}<br>
+            更多视角：<b>f1</b>（1号楼生活辅导员·所管宿舍能耗）、<b>t_zhang</b>（张老师·个人课表），口令同辅导员 <b>{{ demo_accounts.counselor[1] }}</b>
         </div>
         <a href="/" style="display:block;text-align:center;margin-top:12px;font-size:13px;color:var(--primary);">← 返回工作台</a>
     </div>

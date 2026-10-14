@@ -120,8 +120,14 @@
 {% else %}
 {############################ 学生 / 管理：在线咨询 ############################}
 <div class="page-head">
-    <h1>AI 智能客服</h1>
-    <p>解答请假、奖学金评定、学籍异动等问题；AI 无法处理的复杂情况将自动生成工单流转给对应辅导员。</p>
+    <h1>{% if current_user and current_user.role=='admin' %}智能客服中心{% else %}AI 智能客服{% endif %}</h1>
+    <p>
+        {%- if current_user and current_user.role=='admin' -%}
+        查看全量学生咨询与工单流转记录；可代学生登记问题、回复并结案任意工单。
+        {%- else -%}
+        向 AI 辅导员提问请假、奖学金、学籍异动等问题；无法自动处理的复杂情况会生成工单流转给对应辅导员，你可在此跟踪处理进度。
+        {%- endif -%}
+    </p>
 </div>
 <div style="display:grid;grid-template-columns:1.5fr 1fr;gap:20px;align-items:start;">
     <!-- 左：对话区 -->
@@ -144,7 +150,7 @@
     <!-- 右：工单流转 + 咨询记录 -->
     <div>
         <div class="card">
-            <div class="card-title">工单流转{% if current_user and current_user.role=='counselor' %}（我的待办）{% endif %}</div>
+            <div class="card-title">{% if current_user and current_user.role=='student' %}我的工单{% elif current_user and current_user.role=='admin' %}工单流转（全量）{% else %}工单流转{% endif %}</div>
             <div id="tickets">
                 {% for t in tickets %}
                 <div style="border-left:3px solid var(--warning);background:#fffbeb;padding:10px 12px;border-radius:6px;font-size:13px;margin-bottom:10px;">
@@ -162,9 +168,15 @@
                         <button class="btn" style="padding:8px 14px;font-size:13px;" onclick="replyTicket('{{ t.id }}')">回复</button>
                     </div>
                     {% endif %}
+                    {% if t.status != 'resolved' and current_user and current_user.role in ('student','admin') %}
+                    <div style="margin-top:8px;display:flex;gap:8px;align-items:center;">
+                        <button class="btn" style="padding:8px 14px;font-size:13px;background:#16a34a;" onclick="resolveTicket('{{ t.id }}')">我的问题已解决（结单）</button>
+                        <span style="font-size:12px;color:var(--text-3);">确认辅导员已处理完毕，可结单。</span>
+                    </div>
+                    {% endif %}
                 </div>
                 {% else %}
-                <p style="color:var(--text-3);font-size:13px;">暂无工单。当 AI 无法自动处理问题时会在此生成工单。</p>
+                <p style="color:var(--text-3);font-size:13px;">{% if current_user and current_user.role=='student' %}暂无工单。当 AI 无法自动处理你的问题时，会在此生成工单并流转给对应辅导员；辅导员回复后会自动显示在这里。{% else %}暂无工单。学生咨询无法自动处理时会在此生成工单。{% endif %}</p>
                 {% endfor %}
             </div>
         </div>
@@ -184,20 +196,20 @@
         </div>
         {% endif %}
         <div class="card">
-            <div class="card-title">最近咨询记录</div>
+            <div class="card-title">{% if current_user and current_user.role=='student' %}我的咨询记录{% else %}最近咨询记录{% endif %}</div>
             <div class="table-wrap">
                 <table>
-                    <thead><tr><th>学生</th><th>意图</th><th>类型</th><th>时间</th></tr></thead>
+                    <thead><tr>{% if not (current_user and current_user.role=='student') %}<th>学生</th>{% endif %}<th>意图</th><th>类型</th><th>时间</th></tr></thead>
                     <tbody>
                         {% for c in conversations %}
                         <tr>
-                            <td>{{ c.student_id }}</td>
+                            {% if not (current_user and current_user.role=='student') %}<td>{{ c.student_id }}</td>{% endif %}
                             <td>{{ c.intent }}</td>
                             <td><span class="tag {{ 'tag-green' if c.needs_human==0 else 'tag-amber' }}">{{ '自动应答' if c.needs_human==0 else '转工单' }}</span></td>
                             <td style="color:var(--text-3);white-space:nowrap;">{{ c.created_at }}</td>
                         </tr>
                         {% else %}
-                        <tr><td colspan="4" class="empty">暂无咨询记录</td></tr>
+                        <tr><td colspan="{{ 3 if current_user and current_user.role=='student' else 4 }}" class="empty">暂无咨询记录</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>
@@ -285,6 +297,20 @@
             location.reload();
         } catch(e) { alert('回复失败：' + e.message); }
     }
+    // 学生/管理员：将工单结案（确认问题已解决）
+    async function resolveTicket(tid) {
+        if (!confirm('确认该工单已处理完毕、可以结单吗？')) return;
+        try {
+            const r = await fetch('/api/tickets/' + tid + '/resolve', {
+                method: 'POST',
+                headers: {'Content-Type':'application/json', 'X-CSRF-Token':'{{ csrf_token }}'},
+                body: JSON.stringify({resolution: '学生问题已解决，工单结单'})
+            });
+            const data = await r.json();
+            if (!r.ok) { alert(data.error || '结单失败'); return; }
+            refreshSidebar();
+        } catch(e) { alert('结单失败：' + e.message); }
+    }
     // 工作台视图：告警通知标记已处理（闭环）
     async function handleNotice(nid) {
         try {
@@ -310,5 +336,9 @@
             if (table) document.querySelector('.table-wrap table').outerHTML = table.outerHTML;
         } catch(e) { /* 静默：侧栏刷新失败不影响对话 */ }
     }
+    {% if current_user and current_user.role == 'student' %}
+    // 学生视角：每 12 秒自动刷新工单区，辅导员回复后无需手动刷新即可看到（人机协同闭环）
+    setInterval(function () { if (!document.hidden) refreshSidebar(); }, 12000);
+    {% endif %}
 </script>
 {% endblock %}
